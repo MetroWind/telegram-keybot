@@ -26,7 +26,7 @@ def getLogger(name=__name__, level=logging.INFO):
     return logger
 
 Log = getLogger()
-LOCK_FILE = "/var/run/keybot.lock"
+LOCK_FILE = "/tmp/keybot.lock"
 
 class LockMaster(object):
     def __init__(self, lock_name, block=True):
@@ -34,12 +34,15 @@ class LockMaster(object):
         self.Block = block
 
     def __enter__(self):
-        with open(self.LockName, 'a+') as fp:
-            if self.Block is True:
-                fcntl.flock(fp, fcntl.LOCK_EX)
-            else:
-                fcntl.flock(fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            Log.debug("Acquired lock on {}.".format(self.LockName))
+        try:
+            with open(self.LockName, 'a+') as fp:
+                if self.Block is True:
+                    fcntl.flock(fp, fcntl.LOCK_EX)
+                else:
+                    fcntl.flock(fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                Log.debug("Acquired lock on {}.".format(self.LockName))
+        except Exception:
+            Log.error("Unable to acquire lock at {}.".format(LOCK_FILE))
 
     def __exit__(self, type, value, traceback):
         with open(self.LockName, 'a+') as fp:
@@ -249,6 +252,9 @@ def onCMDTest(bot, config, update):
 def onCMDSecretTest(bot, config, update):
     sendBestRedditToday(config)
 
+def onCMDPing(bot, update):
+    update.message.reply_text("Pong!")
+
 def startBot(config: ConfigParams):
     Updater = BotAPI.Updater(config.Token, workers=config.WorkerCount)
     Dispatch= Updater.dispatcher
@@ -266,6 +272,7 @@ def startBot(config: ConfigParams):
 
     Dispatch.add_handler(BotAPI.CommandHandler(
         "secrettest", lambda bot, update: onCMDSecretTest(bot, config, update)))
+    Dispatch.add_handler(BotAPI.CommandHandler("ping", onCMDPing))
 
     Log.info("Starting to poll...")
     UpdateQueue = Updater.start_polling(timeout=30, clean=False)
