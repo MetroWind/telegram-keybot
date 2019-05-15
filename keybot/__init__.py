@@ -8,7 +8,11 @@ import string
 import datetime
 import json
 import fcntl
+import subprocess
+import tempfile
 from html import escape
+
+import requests
 
 import telegram
 import telegram.ext as BotAPI
@@ -27,6 +31,16 @@ def getLogger(name=__name__, level=logging.INFO):
 
 Log = getLogger()
 LOCK_FILE = "/tmp/keybot.lock"
+TG_IMG_SIZE_LIMIT = 4096
+TG_IMG_FILE_SIZE_LIMIT = 5 * 1024 * 1024
+IMG_RESIZE_TARGET = 1024
+IMG_RESIZE_QUALITY = 92
+
+def getTempFile(suffix="") -> str:
+    t, Temp = tempfile.mkstemp(prefix="keybot-", suffix=suffix)
+    os.close(t)
+    Log.debug("Using temp file {}.".format(Temp))
+    return Temp
 
 class LockMaster(object):
     def __init__(self, lock_name, block=True):
@@ -192,6 +206,100 @@ def onEmptyMsg(bot, config, update):
 def onError(bot, update, error):
     Log.error("{}\n{}".format(error, repr(error)))
 
+def downloadFile(uri, to_file):
+    subprocess.check_call(["curl", "--silent", "-o", to_file, uri])
+
+def getURIFileSize(uri: str) -> typing.Tuple[int, str]:
+    """Get the file size pointed by `uri`. This may download the file. If it does,
+    return a tuple (size, downloaded filename), otherwise return (size, None).
+    """
+    Res = requests.head(uri)
+    Res.raise_for_status()
+    if "Content-Length" in Res.headers:
+        Log.debug("Got file size from header: " + str(Res.headers["Content-Length"]))
+        return (int(Res.headers["Content-Length"]), None)
+    else:
+        Temp = getTempFile()
+        Log.info("Downloading {} into {}...".format(uri, Temp))
+        downloadFile(uri, Temp)
+        Size = os.path.getsize(Temp)
+        return (Size, Temp)
+
+def sendPhoto(bot, uri, caption, chat_id):
+    """Send photo at `uri`. If the photo is too big, resize it and send. This always
+    downloads the file to disk.
+    """
+    Log.debug("Sending photo at {}...".format(uri))
+    try:
+        SizeStr = subprocess.check_output(["magick", "identify", "-ping", "-format",
+                                           "%wx%h", uri])
+    except Exception as Err:
+        Log.exception("Failed to get image size: " + repr(Err))
+        return
+    Log.debug("Identify printed {}.".format(SizeStr))
+
+    Parts = SizeStr.decode().split('x')
+    ImgSize = (int(Parts[0]), int(Parts[1]))
+
+    Log.debug("Image size is {}.".format(ImgSize))
+
+    FileSize, File = getURIFileSize(uri)
+    Log.debug("File size for {} is {}.".format(File, FileSize))
+
+    if ImgSize[0] < TG_IMG_SIZE_LIMIT and ImgSize[1] < TG_IMG_SIZE_LIMIT \
+       and FileSize < TG_IMG_FILE_SIZE_LIMIT:
+        # Image is small. Just send URI.
+        bot.send_photo(chat_id, uri, caption,
+                       parse_mode=telegram.ParseMode.MARKDOWN)
+    else:
+        Log.info("Processing large image file...")
+        # Image is large. Download...
+        if File is None:
+            File = getTempFile()
+            downloadFile(uri, File)
+
+        # ... and resize
+        Log.info("Resizing image to {}...".format(IMG_RESIZE_TARGET))
+        NewFile = getTempFile(".jpg")
+        try:
+            # Due to the limitation of the VPS, this is surprisingly easy to
+            # fail.
+            subprocess.check_call(["magick", "convert", File,
+                                   "-limit", "memory", "100MiB",
+                                   # "-limit", "map", "200MiB",
+                                   "-resize", "{0}x{0}".format(IMG_RESIZE_TARGET),
+                                   "-quality", str(IMG_RESIZE_QUALITY),
+                                   NewFile])
+        except subprocess.CalledProcessError:
+            Log.error("Failed to resize image.")
+            os.remove(File)
+            raise
+        os.remove(File)
+
+        try:
+            with open(NewFile, 'rb') as ImgFile:
+                bot.send_photo(chat_id, ImgFile, caption,
+                               parse_mode=telegram.ParseMode.MARKDOWN)
+        finally:
+            os.remove(NewFile)
+
+def trySendFirstPhotoFromPosts(bot, chat_id, posts, caption_tplt):
+    for BestPost in posts:
+        Log.info("Best reddit post today is {}, with image at {}.".format(
+            BestPost.ShortUrl, BestPost.Link))
+
+        try:
+            sendPhoto(bot, BestPost.Link,
+                      caption_tplt.safe_substitute(url=BestPost.ShortUrl),
+                      chat_id)
+        except subprocess.CalledProcessError as Err:
+            Log.exception("Failed to process image. Trying the next best...")
+            continue
+        except Exception as Err:
+            Log.exception(Err)
+        else:
+            break
+
 def getRedditPostsToday(config: ConfigParams) -> typing.List[reddit.RedditPost]:
     Log.debug("Authenticating on Reddit...")
     reddit.RedditQuery.authenticateUserLess(config.RedditClientID,
@@ -222,32 +330,28 @@ def sendBestRedditToday(config):
         return
 
     Posts = getRedditPostsToday(config)
-    BestPost = max((p for p in Posts if p.IsLink and
-                    (p.Link.endswith(".jpg") or p.Link.endswith(".jpeg") or
-                     p.Link.endswith(".png"))),
-                   key=lambda p: p.Score)
-    Log.info("Best reddit post today is " + BestPost.ShortUrl)
+    BestPosts = sorted((p for p in Posts if p.IsLink and
+                       (p.Link.endswith(".jpg") or p.Link.endswith(".jpeg") or
+                        p.Link.endswith(".png"))),
+                      key=lambda p: p.Score, reverse=True)
 
     Updater = BotAPI.Updater(config.Token, workers=1)
     CapTplt = string.Template(config.RedditDailyPicCaption)
-    Updater.bot.send_photo(ChatID, BestPost.Link,
-                           CapTplt.safe_substitute(url=BestPost.ShortUrl),
-                           parse_mode=telegram.ParseMode.MARKDOWN)
+
+    trySendFirstPhotoFromPosts(Updater.bot, ChatID, BestPosts, CapTplt)
 
 def onCMDTest(bot, config, update):
     Log.info("Test command issued from {}.".format(update.message.from_user.full_name))
     Posts = getRedditPostsToday(config)
     Log.debug("Got {} posts.".format(len(Posts)))
-    BestPost = max((p for p in Posts if p.IsLink and
-                    (p.Link.endswith(".jpg") or p.Link.endswith(".jpeg") or
-                     p.Link.endswith(".png"))),
-                   key=lambda p: p.Score)
-    Log.info("Best reddit post today is " + BestPost.ShortUrl)
+    BestPosts = sorted((p for p in Posts if p.IsLink and
+                       (p.Link.endswith(".jpg") or p.Link.endswith(".jpeg") or
+                        p.Link.endswith(".png"))),
+                      key=lambda p: p.Score, reverse=True)
 
     CapTplt = string.Template(config.RedditDailyPicCaption)
-    bot.send_photo(update.message.from_user.id, BestPost.Link,
-                   CapTplt.safe_substitute(url=BestPost.ShortUrl),
-                   parse_mode=telegram.ParseMode.MARKDOWN)
+    trySendFirstPhotoFromPosts(bot, update.message.from_user.id, BestPosts,
+                               CapTplt)
 
 def onCMDSecretTest(bot, config, update):
     sendBestRedditToday(config)
