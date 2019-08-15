@@ -16,7 +16,7 @@ def readConfig():
 
     Log.debug("Username: " + Config.Username)
     Log.debug("Welcome: " + Config.Welcome)
-    Log.debug("Quiet: " + str(Config.Quiet))
+    Log.debug("DoWelcome: " + str(Config.DoWelcome))
     Log.debug("WorkerCount: " + str(Config.WorkerCount))
     Log.debug("RedditDailyPicCaption: " + str(Config.RedditDailyPicCaption))
 

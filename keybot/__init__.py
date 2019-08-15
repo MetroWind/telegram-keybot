@@ -65,7 +65,7 @@ class LockMaster(object):
 
 class ConfigParams(object):
     def __init__(self):
-        self.Quiet = False
+        self.DoWelcome = True
         self.Welcome = ""
         self.Admins = []
         self.Token = ""
@@ -88,7 +88,7 @@ class ConfigParams(object):
 
         if "General" in Parser:
             Sec = Parser["General"]
-            Config.Quiet = Sec.getboolean("Quiet", fallback=Config.Quiet)
+            Config.DoWelcome = Sec.getboolean("DoWelcome", fallback=Config.DoWelcome)
             Config.Admins = Sec.get("Admins", "").split(',')
             Config.Welcome = Sec.get("Welcome", Config.Welcome)
             Config.Token = Sec.get("Token", Config.Token)
@@ -105,6 +105,26 @@ class ConfigParams(object):
                                                    Config.RedditDailyPicCaption)
 
         return Config
+
+    def saveToFile(self, filename):
+        Parser = configparser.ConfigParser()
+        Parser.add_section("General")
+        Parser.set("General", "DoWelcome", self.DoWelcome)
+        Parser.set("General", "Admins", ','.join(self.Admins))
+        Parser.set("General", "Welcome", self.Welcome)
+        Parser.set("General", "Token", self.Token)
+        Parser.set("General", "Username", self.Username)
+        Parser.set("General", "LogDebug", self.LogDebug)
+        Parser.set("General", "WorkerCount", self.WorkerCount)
+
+        if self.RedditClientID != "":
+            Parser.add_section("Reddit")
+            Parser.set("Reddit", "ClientID", self.RedditClientID)
+            Parser.set("Reddit", "ClientSecret", self.RedditClientSecret)
+            Parser.set("Reddit", "DailyPicCaption", self.RedditDailyPicCaption)
+
+        with open(filename, 'w') as f:
+            Parser.write(f)
 
 class RuntimeInfo(object):
     File = "runtime-info.json"
@@ -152,13 +172,13 @@ def check(bot, config, update, override_lock=None):
                    text='Please add me to a group first!')
         return False
 
-    if config.Quiet:
+    if not config.DoWelcome:
         return False
     return True
 
 def welcome(bot, config, new_users, chat):
     """Welcomes a user to the chat."""
-    if config.Quiet is True:
+    if config.DoWelcome is False:
         Log.debug("Quiet! Don't welcome!")
         return
 
