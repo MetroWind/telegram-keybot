@@ -30,6 +30,8 @@ def getLogger(name=__name__, level=logging.INFO):
     return logger
 
 Log = getLogger()
+Log.setLevel(logging.DEBUG)
+
 LOCK_FILE = "/tmp/keybot.lock"
 TG_IMG_SIZE_LIMIT = 4096
 TG_IMG_FILE_SIZE_LIMIT = 5 * 1024 * 1024
@@ -46,21 +48,23 @@ class LockMaster(object):
     def __init__(self, lock_name, block=True):
         self.LockName = lock_name
         self.Block = block
+        self.Lock = None
 
     def __enter__(self):
         try:
-            with open(self.LockName, 'a+') as fp:
-                if self.Block is True:
-                    fcntl.flock(fp, fcntl.LOCK_EX)
-                else:
-                    fcntl.flock(fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                Log.debug("Acquired lock on {}.".format(self.LockName))
+            self.Lock = open(self.LockName, 'a+')
+            if self.Block is True:
+                fcntl.flock(self.Lock, fcntl.LOCK_EX)
+            else:
+                fcntl.flock(self.Lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            Log.debug("Acquired lock on {}.".format(self.LockName))
         except Exception:
             Log.error("Unable to acquire lock at {}.".format(LOCK_FILE))
 
     def __exit__(self, type, value, traceback):
-        with open(self.LockName, 'a+') as fp:
-            fcntl.flock(fp, fcntl.LOCK_UN)
+        fcntl.flock(self.Lock, fcntl.LOCK_UN)
+        self.Lock.close()
+        self.Lock = None
         Log.debug("Released lock on {}".format(self.LockName))
 
 class ConfigParams(object):
@@ -223,6 +227,28 @@ def onEmptyMsg(bot, config, update):
             except Exception:
                 Log.exception("Failed to welcome.")
 
+def onAnyReply(bot, config, update):
+    Chat = update.message.chat
+    ReplyTo = update.message.reply_to_message.message_id
+    Log.debug("Reply to %d recieved.", ReplyTo)
+    Info = RuntimeInfo()
+    MsgID = Info.get("last_msg_id")
+    if MsgID is None:
+        Log.debug("No last msg ID found. Ignore.")
+        return
+    WaCount = Info.get("wa_count", 0)
+
+    if MsgID == ReplyTo and update.message.text.startswith("哇"):
+        Log.debug("Is a wa. Wa count was %d.", WaCount)
+        if WaCount == 2:
+            bot.send_message(Chat.id, "哇！", reply_to_message_id=Info.MsgID)
+            Info.set("last_msg_id", None)
+            Info.set("wa_count", 0)
+        else:
+            Info.set("wa_count", WaCount + 1)
+    else:
+        Log.debug("Not a wa.")
+
 def onError(bot, update, error):
     Log.error("{}\n{}".format(error, repr(error)))
 
@@ -269,8 +295,8 @@ def sendPhoto(bot, uri, caption, chat_id):
     if ImgSize[0] < TG_IMG_SIZE_LIMIT and ImgSize[1] < TG_IMG_SIZE_LIMIT \
        and FileSize < TG_IMG_FILE_SIZE_LIMIT:
         # Image is small. Just send URI.
-        bot.send_photo(chat_id, uri, caption,
-                       parse_mode=telegram.ParseMode.MARKDOWN)
+        return bot.send_photo(chat_id, uri, caption,
+                              parse_mode=telegram.ParseMode.MARKDOWN)
     else:
         Log.info("Processing large image file...")
         # Image is large. Download...
@@ -298,8 +324,8 @@ def sendPhoto(bot, uri, caption, chat_id):
 
         try:
             with open(NewFile, 'rb') as ImgFile:
-                bot.send_photo(chat_id, ImgFile, caption,
-                               parse_mode=telegram.ParseMode.MARKDOWN)
+                return bot.send_photo(chat_id, ImgFile, caption,
+                                      parse_mode=telegram.ParseMode.MARKDOWN)
         finally:
             os.remove(NewFile)
 
@@ -309,9 +335,10 @@ def trySendFirstPhotoFromPosts(bot, chat_id, posts, caption_tplt):
             BestPost.ShortUrl, BestPost.Link))
 
         try:
-            sendPhoto(bot, BestPost.Link,
-                      caption_tplt.safe_substitute(url=BestPost.ShortUrl),
-                      chat_id)
+            return sendPhoto(
+                bot, BestPost.Link,
+                caption_tplt.safe_substitute(url=BestPost.ShortUrl),
+                chat_id)
         except subprocess.CalledProcessError as Err:
             Log.exception("Failed to process image. Trying the next best...")
             continue
@@ -358,7 +385,10 @@ def sendBestRedditToday(config):
     Updater = BotAPI.Updater(config.Token, workers=1)
     CapTplt = string.Template(config.RedditDailyPicCaption)
 
-    trySendFirstPhotoFromPosts(Updater.bot, ChatID, BestPosts, CapTplt)
+    Msg = trySendFirstPhotoFromPosts(Updater.bot, ChatID, BestPosts, CapTplt)
+    RuntimeInfo().set("last_msg_id", Msg.message_id)
+    RuntimeInfo().set("wa_count", 0)
+    return Msg
 
 def onCMDTest(bot, config, update):
     Log.info("Test command issued from {}.".format(update.message.from_user.full_name))
@@ -387,6 +417,9 @@ def startBot(config: ConfigParams):
     Dispatch.add_handler(BotAPI.MessageHandler(
         BotAPI.Filters.status_update,
         lambda bot, update: onEmptyMsg(bot, config, update)))
+    Dispatch.add_handler(BotAPI.MessageHandler(
+        BotAPI.Filters.reply,
+        lambda bot, update: onAnyReply(bot, config, update)))
 
     Dispatch.add_error_handler(onError)
 
