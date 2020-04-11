@@ -241,7 +241,7 @@ def onAnyReply(bot, config, update):
     if MsgID == ReplyTo and update.message.text.startswith("哇"):
         Log.debug("Is a wa. Wa count was %d.", WaCount)
         if WaCount == 2:
-            bot.send_message(Chat.id, "哇！", reply_to_message_id=Info.MsgID)
+            bot.send_message(Chat.id, "哇！", reply_to_message_id=MsgID)
             Info.set("last_msg_id", None)
             Info.set("wa_count", 0)
         else:
