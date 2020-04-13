@@ -4,7 +4,9 @@ import sys, os
 import typing
 import logging
 import configparser
+import threading
 import string
+import random
 import datetime
 import json
 import fcntl
@@ -43,6 +45,10 @@ def getTempFile(suffix="") -> str:
     os.close(t)
     Log.debug("Using temp file {}.".format(Temp))
     return Temp
+
+def doWithDelay(delay_secs: int, run: typing.Callable, *args, **kargs) -> typing.Any:
+    Proc = threading.Timer(delay_secs, run, args, kargs)
+    Proc.start()
 
 class LockMaster(object):
     def __init__(self, lock_name, block=True):
@@ -241,7 +247,10 @@ def onAnyReply(bot, config, update):
     if MsgID == ReplyTo and update.message.text.startswith("哇"):
         Log.debug("Is a wa. Wa count was %d.", WaCount)
         if WaCount == 2:
-            bot.send_message(Chat.id, "哇！", reply_to_message_id=MsgID)
+            Delay = random.uniform(10.0, 600.0)
+            Log.debug("Wa after %f seconds.", Delay)
+            doWithDelay(Delay, bot.send_message,
+                        [Chat.id, "哇！"], dict(reply_to_message_id=MsgID))
             Info.set("last_msg_id", None)
             Info.set("wa_count", 0)
         else:
