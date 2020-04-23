@@ -250,7 +250,7 @@ def onAnyReply(bot, config, update):
             Delay = random.uniform(10.0, 600.0)
             Log.debug("Wa after %f seconds.", Delay)
             doWithDelay(Delay, bot.send_message,
-                        [Chat.id, "哇！"], dict(reply_to_message_id=MsgID))
+                        Chat.id, "哇！", reply_to_message_id=MsgID)
             Info.set("last_msg_id", None)
             Info.set("wa_count", 0)
         else:
@@ -401,16 +401,7 @@ def sendBestRedditToday(config):
 
 def onCMDTest(bot, config, update):
     Log.info("Test command issued from {}.".format(update.message.from_user.full_name))
-    Posts = getRedditPostsToday(config)
-    Log.debug("Got {} posts.".format(len(Posts)))
-    BestPosts = sorted((p for p in Posts if p.IsLink and
-                       (p.Link.endswith(".jpg") or p.Link.endswith(".jpeg") or
-                        p.Link.endswith(".png"))),
-                      key=lambda p: p.Score, reverse=True)
-
-    CapTplt = string.Template(config.RedditDailyPicCaption)
-    trySendFirstPhotoFromPosts(bot, update.message.from_user.id, BestPosts,
-                               CapTplt)
+    doWithDelay(1, bot.send_message, RuntimeInfo().get("ChatID"), "偷偷测试一下⋯⋯")
 
 def onCMDSecretTest(bot, config, update):
     sendBestRedditToday(config)
