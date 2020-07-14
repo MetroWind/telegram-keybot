@@ -224,7 +224,15 @@ def onEmptyMsg(bot, config, update):
         Log.debug("Status update for {}.".format(', '.join(Names)))
         # Bot was added to a group chat
         if config.Username in Names:
-            Log.info("Added to chat {} ({}).".format(Chat.id, Chat.title))
+            Chats = RuntimeInfo().get("ChatID")
+            try:
+                if Chat.id not in Chats:
+                    Chats.append(Chat.id)
+                    RuntimeInfo().set("ChatID", Chats)
+                    Log.info("Added to chat {} ({}).".format(Chat.id, Chat.title))
+            except Exception as e:
+                Log.exception("Failed to be added to chat %d (%s).",
+                              Chat.id, Chat.title)
         # Another user joined the chat
         else:
             Log.debug("New user joined.")
