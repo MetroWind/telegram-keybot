@@ -82,6 +82,7 @@ class ConfigParams(object):
         self.Username = ""
         self.LogDebug = False
         self.WorkerCount = 4
+        self.GroupID = 0
 
         self.RedditClientID = ""
         self.RedditClientSecret = ""
@@ -105,6 +106,7 @@ class ConfigParams(object):
             Config.Username = Sec.get("Username", Config.Username)
             Config.LogDebug = Sec.getboolean("LogDebug", fallback=Config.LogDebug)
             Config.WorkerCount = int(Sec.get("WorkerCount", str(Config.WorkerCount)))
+            Config.GroupID = Sec.get("GroupID", Config.GroupID)
 
         if "Reddit" in Parser:
             Sec = Parser["Reddit"]
@@ -126,6 +128,7 @@ class ConfigParams(object):
         Parser.set("General", "Username", self.Username)
         Parser.set("General", "LogDebug", self.LogDebug)
         Parser.set("General", "WorkerCount", self.WorkerCount)
+        Parser.set("General", "GroupID", self.GroupID)
 
         if self.RedditClientID != "":
             Parser.add_section("Reddit")
@@ -216,7 +219,6 @@ def onEmptyMsg(bot, config, update):
     """
     Chat = update.message.chat
     Log.debug("Got status update from chat {}.".format(Chat.id))
-    RuntimeInfo().set("ChatID", Chat.id)
 
     NewMembers = update.message.new_chat_members
     if NewMembers:
@@ -389,8 +391,9 @@ def getRedditPostsToday(config: ConfigParams) -> typing.List[reddit.RedditPost]:
     return Posts
 
 def sendBestRedditToday(config):
-    ChatID = RuntimeInfo().get("ChatID")
-    if ChatID is None:
+    # ChatID = RuntimeInfo().get("ChatID")
+    ChatID = config.GroupID
+    if ChatID is None or ChatID == 0:
         return
 
     Posts = getRedditPostsToday(config)
@@ -409,7 +412,7 @@ def sendBestRedditToday(config):
 
 def onCMDTest(bot, config, update):
     Log.info("Test command issued from {}.".format(update.message.from_user.full_name))
-    doWithDelay(1, bot.send_message, RuntimeInfo().get("ChatID"), "偷偷测试一下⋯⋯")
+    doWithDelay(1, bot.send_message, config.GroupID, "偷偷测试一下⋯⋯")
 
 def onCMDSecretTest(bot, config, update):
     sendBestRedditToday(config)
