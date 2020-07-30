@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::time;
 
 use log::info;
 use reqwest;
@@ -57,38 +58,70 @@ impl RedditQuerier
     pub fn fromAuthentication(client_id: &str, client_secret: &str)
                               -> Result<Self, Error>
     {
+        let now = time::SystemTime::now().duration_since(time::UNIX_EPOCH)
+            .map_err(|_| {error!(RedditError, "failed to get time")})?;
         let state_str: String = uuid::Uuid::new_v1(
-            uuid::v1::Timestamp::from_unix(uuid::v1::Context::new(42),
-                                           1497624119, 1234),
+            uuid::v1::Timestamp::from_unix(
+                uuid::v1::Context::new(42), now.as_secs(), now.subsec_nanos()),
             &[1, 2, 3, 4, 5, 6]).map_err(
-            |_| { error!(RuntimeError, "failed to generate UUID") })?
+            |_| { error!(RedditError, "failed to generate UUID") })?
             .to_string();
 
-        let init_payload = [
+        let payload_init = [
             ("client_id", client_id),
             ("response_type", "code"),
             ("state", &state_str),
-            ("redirect_uri", "http://localhost:8000/"),
+            ("redirect_uri", "http://localhost:31416/"),
             ("duration", "temporary"),
             ("scope", "identity edit flair history mysubreddits \
 privatemessages read report save submit subscribe vote \
 wikiedit wikiread")];
 
         let perm_url = reqwest::Url::parse_with_params(
-            "https://www.reddit.com/api/v1/authorize", &init_payload).unwrap();
+            "https://www.reddit.com/api/v1/authorize", &payload_init).unwrap();
         println!("Please open the following URI in your browser:\n\n{}",
                  perm_url);
 
-        let server = simple_http_server::SimpleHttpServer{};
-        let params = server.handleOne();
+        let server = simple_http_server::SimpleHttpServer::new(31416);
+        let params = server.handleOne()?;
 
-        println!("{:?}", params);
+        if params.contains_key("error")
+        {
+            return Err(error!(RedditError, format!(
+                "Failed to authenticate: {}", params["error"])));
+        }
+
+        if params["state"] != state_str
+        {
+            return Err(error!(RedditError, "Invalid state string"));
+        }
+
+        let code = &params["code"];
+
+        let payload_token = [
+            ("grant_type", "authorization_code"),
+            ("code", &code),
+            ("redirect_uri", "http://localhost:31416/")];
+
+        let client = requests::Client::new();
+        let res = client.post("https://www.reddit.com/api/v1/access_token")
+            .header("User-Agent", USER_AGENT)
+            .form(&payload_token).basic_auth(client_id, Some(client_secret))
+            .send().map_err(|_| {
+                error!(RedditError, "Failed to post token request")})?;
+
+        res.error_for_status_ref().map_err(|e| {
+            error!(RedditError, format!("Failed to get token: {}", e))})?;
+
+        let data: HashMap<String, serde_json::Value> = res.json().map_err(|e| {
+            error!(RedditError, format!("Failed to parse token response: {}", e))
+        })?;
 
         Ok(Self {
-            token: String::new(),
-            refresh_token: None,
-            client: requests::Client::new(),
+            token: String::from(data["access_token"].as_str().unwrap()),
+            refresh_token: Some(String::from(
+                data["refresh_token"].as_str().unwrap())),
+            client: client,
         })
-
     }
 }

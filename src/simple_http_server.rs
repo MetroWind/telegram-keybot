@@ -1,5 +1,4 @@
-use std::net::TcpListener;
-use std::net::TcpStream;
+use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::io::{Read, Write};
 use std::collections::HashMap;
 use std::str;
@@ -11,6 +10,7 @@ use crate::error::Error;
 
 pub struct SimpleHttpServer
 {
+    port: u16,
 }
 
 pub enum HttpMethod
@@ -19,13 +19,37 @@ pub enum HttpMethod
     POST,
 }
 
+pub fn queryFromRequest(req: &[u8]) -> Result<HashMap<String, String>, Error>
+{
+    let pattern = Regex::new(r"^GET (.*) HTTP/1\.1").unwrap();
+    let caps = pattern.captures(req)
+        .ok_or(error!(HttpServerError, "invalid request"))?;
+    let urlstr: &[u8] = caps.get(1).unwrap().as_bytes();
+    let urlstr: String = "http://localhost".to_owned() +
+        str::from_utf8(urlstr).unwrap();
+    let url = Url::parse(&urlstr).map_err(
+        |_| { error!(RuntimeError, format!("invalid URL: {}", urlstr)) })?;
+    let mut params: HashMap<String, String> = HashMap::new();
+    for pair in url.query_pairs()
+    {
+        params.insert(pair.0.into_owned(), pair.1.into_owned());
+    }
+    Ok(params)
+}
+
 impl SimpleHttpServer
 {
+    pub fn new(port: u16) -> Self
+    {
+        Self { port: port }
+    }
+
     pub fn start(&self) -> Result<(), Error>
     {
-        let listener = TcpListener::bind("127.0.0.1:8000").unwrap();
-        println!("Listening on port 8000.");
-        println!("Server starting at http://localhost:8000/ ...");
+        let listener = TcpListener::bind(
+            SocketAddr::from(([127,0,0,1], self.port))).unwrap();
+        println!("Listening on port {}.", self.port);
+        println!("Server starting at http://localhost:{}/ ...", self.port);
 
         for stream in listener.incoming()
         {
@@ -37,9 +61,10 @@ impl SimpleHttpServer
 
     pub fn handleOne(&self) -> Result<HashMap<String, String>, Error>
     {
-        let listener = TcpListener::bind("127.0.0.1:8000").unwrap();
-        println!("Listening on port 8000.");
-        println!("Server starting at http://localhost:8000/ ...");
+        let listener = TcpListener::bind(
+            SocketAddr::from(([127,0,0,1], self.port))).unwrap();
+        println!("Listening on port {}.", self.port);
+        println!("Server starting at http://localhost:{}/ ...", self.port);
 
         for stream in listener.incoming()
         {
@@ -55,22 +80,7 @@ impl SimpleHttpServer
         stream.read(&mut buffer).map_err(|_| {
             error!(HttpServerError, "Failed to read stream") })?;
 
-        // let request = str::from_utf8(&buffer);
-        println!("Request:\n{}", str::from_utf8(&buffer).unwrap());
-        let get = b"GET / HTTP/1.1\r\n";
-        let pattern = Regex::new(r"(?-u)^GET (.*) HTTP/1\.1.*$").unwrap();
-        let caps = pattern.captures(&buffer)
-            .ok_or(error!(HttpServerError, "invalid request"))?;
-        let urlstr: &[u8] = caps.get(1).unwrap().as_bytes();
-        let urlstr: String = "http://localhost:8000".to_owned() +
-            str::from_utf8(urlstr).unwrap();
-        let url = Url::parse(&urlstr).map_err(
-            |_| { error!(RuntimeError, format!("invalid URL: {}", urlstr)) })?;
-        let mut params: HashMap<String, String> = HashMap::new();
-        for pair in url.query_pairs()
-        {
-            params.insert(pair.0.into_owned(), pair.1.into_owned());
-        }
+        let params = queryFromRequest(&buffer)?;
 
         let contents = "It's a trap!";
         let response = format!(

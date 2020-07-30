@@ -17,13 +17,13 @@ fn main() -> Result<(), error::Error>
     let mut app_secret = String::new();
 
     print!("App ID: ");
-    io::stdout().flush();
-    stdin.read_line(&mut app_id);
+    io::stdout().flush().unwrap();
+    stdin.read_line(&mut app_id).unwrap();
     print!("App secret: ");
-    io::stdout().flush();
-    stdin.read_line(&mut app_secret);
+    io::stdout().flush().unwrap();
+    stdin.read_line(&mut app_secret).unwrap();
 
     let redditor = reddit::RedditQuerier::fromAuthentication(
-        &app_id, &app_secret)?;
+        &utils::strip(app_id), &utils::strip(app_secret))?;
     Ok(())
 }
