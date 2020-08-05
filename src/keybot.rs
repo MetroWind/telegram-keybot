@@ -29,7 +29,7 @@ static TG_IMG_FILE_SIZE_LIMIT: u64 = 5 * 1024 * 1024;
 static IMG_RESIZE_TARGET: u32 = 1024;
 static IMG_RESIZE_QUALITY: u32 = 92;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct ConfigParamsGeneral
 {
     pub do_welcome: bool,
@@ -39,7 +39,7 @@ pub struct ConfigParamsGeneral
     pub group_id: Option<i64>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct ConfigParamsReddit
 {
     pub client_id: String,
@@ -47,7 +47,7 @@ pub struct ConfigParamsReddit
     pub daily_pic_caption: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct ConfigParams
 {
     pub general: ConfigParamsGeneral,
@@ -293,8 +293,7 @@ async fn onWaReply(api: &bot::Api, msg: &Message) -> Result<(), Error>
 
     if info.wa_count == 2
     {
-        let mut rng = thread_rng();
-        let delay: f64 = rng.gen_range(10.0, 600.0);
+        let delay: f64 = thread_rng().gen_range(10.0, 600.0);
         replyWithDelay(api, "哇！".to_string(), msg, delay).await?;
         info.last_msg_id = None;
         info.wa_count = 0;
@@ -593,7 +592,7 @@ async fn onChannelPost(api: &bot::Api, config: &ConfigParams,
     {
         MessageKind::NewChatMembers{ref data} =>
         {
-            onNewChatMembers(api, config, data, &post.chat).await?;
+            onNewChatMembers(api, &config, data, &post.chat).await?;
         },
         _ => ()
     }
@@ -613,23 +612,28 @@ pub async fn startBot(config: &ConfigParams)
             Ok(u) => u,
         };
 
-        match update.kind
-        {
-            bot::types::UpdateKind::Message(message) =>
+        let api = api.clone();
+        // TODO: maybe use a box instead of cloning?
+        let config = config.clone();
+        tokio::spawn(async move {
+            match update.kind
             {
-                if let Err(e) = onMessage(&api, message).await
+                bot::types::UpdateKind::Message(message) =>
                 {
-                    log_error!("{}", e);
-                }
-            },
-            bot::types::UpdateKind::ChannelPost(post) =>
-            {
-                if let Err(e) = onChannelPost(&api, config, post).await
+                    if let Err(e) = onMessage(&api, message).await
+                    {
+                        log_error!("{}", e);
+                    }
+                },
+                bot::types::UpdateKind::ChannelPost(post) =>
                 {
-                    log_error!("{}", e);
-                }
-            },
-            _ => (),
-        }
+                    if let Err(e) = onChannelPost(&api, &config, post).await
+                    {
+                        log_error!("{}", e);
+                    }
+                },
+                _ => (),
+            }
+        });
     }
 }
