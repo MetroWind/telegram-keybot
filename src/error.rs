@@ -12,7 +12,7 @@ macro_rules! error
     };
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Error
 {
     RuntimeError(String),

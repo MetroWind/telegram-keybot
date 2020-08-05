@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::io::{Read, Write};
 use std::collections::HashMap;
@@ -13,12 +15,6 @@ pub struct SimpleHttpServer
     port: u16,
 }
 
-pub enum HttpMethod
-{
-    GET,
-    POST,
-}
-
 pub fn queryFromRequest(req: &[u8]) -> Result<HashMap<String, String>, Error>
 {
     let pattern = Regex::new(r"^GET (.*) HTTP/1\.1").unwrap();
@@ -28,7 +24,7 @@ pub fn queryFromRequest(req: &[u8]) -> Result<HashMap<String, String>, Error>
     let urlstr: String = "http://localhost".to_owned() +
         str::from_utf8(urlstr).unwrap();
     let url = Url::parse(&urlstr).map_err(
-        |_| { error!(RuntimeError, format!("invalid URL: {}", urlstr)) })?;
+        |_| { error!(HttpServerError, format!("invalid URL: {}", urlstr)) })?;
     let mut params: HashMap<String, String> = HashMap::new();
     for pair in url.query_pairs()
     {

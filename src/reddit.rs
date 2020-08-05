@@ -12,12 +12,14 @@ use chrono::prelude::*;
 
 use crate::error::Error;
 use crate::simple_http_server;
-use crate::utils;
 
+#[allow(dead_code)]
 pub struct RedditQuerier
 {
-    token: Option<String>,
+    token: String,
     refresh_token: Option<String>,
+    client_id: String,
+    client_secret: String,
 }
 
 impl RedditQuerier
@@ -25,22 +27,15 @@ impl RedditQuerier
     const URL_BASE: &'static str = "https://oauth.reddit.com";
     const USER_AGENT: &'static str = "desktop:org.darksair.keybot:0.0.1 (by /u/darksair)";
 
-    pub fn withoutAuthentication() -> Self
-    {
-        Self { token: None,
-               refresh_token: None,
-        }
-    }
-
-    pub fn fromUserlessAuthentication(
+    pub async fn fromUserlessAuthentication(
         client_id: &str, client_secret: &str) -> Result<Self, Error>
     {
         let url = "https://www.reddit.com/api/v1/access_token";
         let payload = [("grant_type", "client_credentials"),];
-        let client = requests::Client::new();
+        let client = reqwest::Client::new();
         let res = match client.post(url).header("User-Agent", Self::USER_AGENT)
             .form(&payload).basic_auth(client_id, Some(client_secret))
-            .send()
+            .send().await
         {
             Err(_) => { return Err(error!(
                 RedditError, "Failed to authenticate userless (post)")); },
@@ -54,16 +49,19 @@ impl RedditQuerier
                                      e.status().unwrap().as_u16())));
         }
 
-        let data: HashMap<String, serde_json::Value> = res.json().map_err(|e| {
+        let data: HashMap<String, serde_json::Value> = res.json().await.map_err(|e| {
             error!(RedditError, format!("Failed to authenticate userless: {}", e))
         })?;
 
         Ok(Self {
-            token: Some(String::from(data["access_token"].as_str().unwrap())),
+            token: String::from(data["access_token"].as_str().unwrap()),
             refresh_token: None,
+            client_id: client_id.to_owned(),
+            client_secret: client_secret.to_owned(),
         })
     }
 
+    #[allow(dead_code)]
     pub fn fromAuthentication(client_id: &str, client_secret: &str)
                               -> Result<Self, Error>
     {
@@ -127,17 +125,19 @@ wikiedit wikiread")];
         })?;
 
         Ok(Self {
-            token: Some(String::from(data["access_token"].as_str().unwrap())),
+            token: String::from(data["access_token"].as_str().unwrap()),
             refresh_token: Some(String::from(
                 data["refresh_token"].as_str().unwrap())),
+            client_id: client_id.to_owned(),
+            client_secret: client_secret.to_owned(),
         })
     }
 
     pub fn urlPreprocess(url_raw: &str) -> Result<String, Error>
     {
-        let url = reqwest::Url::parse(url_raw).map_err(
-            |_| {error!(RedditError,
-                        format!("Failed to parse url {}", url_raw))})?;
+        let url = reqwest::Url::parse(&("http://localhost".to_owned() + url_raw))
+            .map_err(|_| error!(
+                RedditError, format!("Failed to parse url {}", url_raw)))?;
         let mut result: String;
         if url.query().is_none()
         {
@@ -155,21 +155,33 @@ wikiedit wikiread")];
         Ok(result)
     }
 
-    pub fn query(&self, req_builder: requests::RequestBuilder)
-               -> Result<requests::Response, Error>
+    pub async fn query(&self, req_builder: reqwest::RequestBuilder)
+                       -> Result<reqwest::Response, Error>
     {
         let mut result = req_builder.header("User-Agent", Self::USER_AGENT);
-        if self.token.is_some()
-        {
-            result = result.header(
-                "Authorization",
-                "bearer ".to_owned() + self.token.as_ref().unwrap());
-        }
-        let res = result.send().map_err(
+        result = result.header(
+            "Authorization",
+            "bearer ".to_owned() + self.token.as_ref());
+        let res = result.send().await.map_err(
             |e| {error!(RedditError,
                         format!("Failed to send request: {}", e))})?;
         res.error_for_status().map_err(
             |e| {error!(RedditError, format!("Query failed: {}", e))})
+    }
+
+    pub async fn logout(self) -> Result<(), Error>
+    {
+        let payload = [("token", self.token.as_ref()),
+                       ("token_type_hint", "access_token")];
+        let client = reqwest::Client::new();
+        let res = client.post("https://www.reddit.com/api/v1/revoke_token")
+            .header("User-Agent", Self::USER_AGENT)
+            .form(&payload).basic_auth(&self.client_id, Some(&self.client_secret))
+            .send().await.map_err(|_| {
+                error!(RedditError, "Failed to post logout request")})?;
+
+        res.error_for_status().map_err(|e| {
+            error!(RedditError, format!("Failed to logout: {}", e))}).map(|_| ())
     }
 }
 
@@ -190,6 +202,7 @@ pub struct Post
 
 impl Post
 {
+    #[allow(dead_code)]
     pub fn new() -> Self
     {
         Self {
@@ -240,7 +253,6 @@ impl fmt::Debug for Post
     }
 }
 
-
 makeIntEnum!
 {
     PostSorting {hot, new,} with u8,
@@ -261,11 +273,12 @@ impl Subreddit
 
     fn urlName(&self) -> String
     {
-        "r/".to_owned() + &self.name
+        "/r/".to_owned() + &self.name
     }
 
-    pub fn list(&self, sorting: PostSorting, before: Option<&str>,
-                after: Option<&str>) -> Result<Vec<Post>, Error>
+    pub async fn list(&self, querier: &RedditQuerier, sorting: PostSorting,
+                      before: Option<&str>, after: Option<&str>)
+                      -> Result<Vec<Post>, Error>
     {
         let mut query = vec![("g", "GLOBAL"),];
         if let Some(before_id) = before
@@ -277,12 +290,12 @@ impl Subreddit
             query.push(("after", after_id));
         }
 
-        let client = requests::Client::new();
-        let querier = RedditQuerier::withoutAuthentication();
+        let client = reqwest::Client::new();
         let res = querier.query(
-            client.get(&format!("https://reddit.com/{}/{}.json", self.urlName(), sorting))
-                .query(&query))?;
-        let data: serde_json::Value = res.json().map_err(
+            client.get(&RedditQuerier::urlPreprocess(
+                &format!("{}/{}.json", self.urlName(), sorting))?)
+                .query(&query)).await?;
+        let data: serde_json::Value = res.json().await.map_err(
             |_| {error!(RedditError, "Invalid JSON in listing")})?;
         // println!("{}", serde_json::to_string_pretty(&data).unwrap());
         Ok(data["data"]["children"].as_array().unwrap().iter().map(

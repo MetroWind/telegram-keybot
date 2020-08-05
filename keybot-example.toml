@@ -1,0 +1,11 @@
+[general]
+do_welcome = false
+welcome = "${user}，你已经是一个键盘侠啦！快来和大家打个招呼吧~"
+token = "some:token"
+username = "username_of_bot"
+group_id = 0
+
+[reddit]
+client_id = "id"
+client_secret = "secret"
+daily_pic_caption = "今天份的键盘 ${url}"
