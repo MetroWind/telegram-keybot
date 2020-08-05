@@ -16,7 +16,7 @@ jobs:
           command: build
           args: --release
 
-      - run: xz target/release/keybot
+      - run: xz --force target/release/keybot
 
       - uses: actions/upload-artifact@v2
         with:
