@@ -558,6 +558,7 @@ pub async fn sendBestRedditToday(api: &bot::Api, config: &ConfigParams)
             link.ends_with(".png")
     }).collect();
     best_posts.sort_by_key(|p| p.score);
+    best_posts.reverse();
 
     let msg = trySendFirstPhotoFromPosts(
         api, chat_id, &best_posts, &config.reddit.daily_pic_caption).await?;
@@ -613,7 +614,7 @@ pub async fn startBot(config: &ConfigParams)
         };
 
         let api = api.clone();
-        // TODO: maybe use a box instead of cloning?
+        // TODO: maybe use an arc instead of cloning?
         let config = config.clone();
         tokio::spawn(async move {
             match update.kind

@@ -16,9 +16,9 @@ jobs:
           command: build
           args: --release
 
-      - run: xz --force target/release/keybot
+      - run: strip target/release/keybot
 
       - uses: actions/upload-artifact@v2
         with:
-          name: keybot-head
-          path: target/release/keybot.xz
+          name: keybot
+          path: target/release/keybot

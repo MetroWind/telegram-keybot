@@ -240,7 +240,7 @@ impl Post
 
     pub fn shortUrl(&self) -> String
     {
-        let uid = self.id.splitn(1, "_").last().unwrap();
+        let uid = self.id.splitn(2, "_").last().unwrap();
         format!("https://reddit.com/r/{}/comments/{}/", self.sub, uid)
     }
 }
