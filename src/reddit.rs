@@ -13,6 +13,9 @@ use chrono::prelude::*;
 use crate::error::Error;
 use crate::simple_http_server;
 
+/// Provide Reddit API access.
+///
+/// To create a value of this type, use the authentication factories.
 #[allow(dead_code)]
 pub struct RedditQuerier
 {
@@ -27,6 +30,8 @@ impl RedditQuerier
     const URL_BASE: &'static str = "https://oauth.reddit.com";
     const USER_AGENT: &'static str = "desktop:org.darksair.keybot:0.0.1 (by /u/darksair)";
 
+    /// Make a [user-less
+    /// authentication](https://github.com/reddit-archive/reddit/wiki/OAuth2#application-only-oauth).
     pub async fn fromUserlessAuthentication(
         client_id: &str, client_secret: &str) -> Result<Self, Error>
     {
@@ -61,6 +66,9 @@ impl RedditQuerier
         })
     }
 
+    /// Authenticate as a user. This requires a human to open the
+    /// browser with a printed URI, which makes an HTTP request to a
+    /// temperarary local HTTP server with the acquired credentials.
     #[allow(dead_code)]
     pub fn fromAuthentication(client_id: &str, client_secret: &str)
                               -> Result<Self, Error>
@@ -133,7 +141,9 @@ wikiedit wikiread")];
         })
     }
 
-    pub fn urlPreprocess(url_raw: &str) -> Result<String, Error>
+    // Transform `url_raw` to a form that is suitable to use for
+    // Reddit’s listing API.
+    fn urlPreprocess(url_raw: &str) -> Result<String, Error>
     {
         let url = reqwest::Url::parse(&("http://localhost".to_owned() + url_raw))
             .map_err(|_| error!(
@@ -155,6 +165,9 @@ wikiedit wikiread")];
         Ok(result)
     }
 
+    /// Take a `reqwest::RequestBuilder` and add the appropriate
+    /// headers to the request. Send the request and see if the
+    /// respond HTTP code is good.
     pub async fn query(&self, req_builder: reqwest::RequestBuilder)
                        -> Result<reqwest::Response, Error>
     {
@@ -169,6 +182,7 @@ wikiedit wikiread")];
             |e| {error!(RedditError, format!("Query failed: {}", e))})
     }
 
+    /// Revoke the access token and consume self.
     pub async fn logout(self) -> Result<(), Error>
     {
         let payload = [("token", self.token.as_ref()),
