@@ -162,12 +162,10 @@ impl RuntimeInfo
     }
 }
 
-async fn replyWithDelay(api: &bot::Api, msg: String, reply_to: &Message,
+async fn replyWithDelay(api: &bot::Api, msg: String,
+                        reply_to_id: bot::MessageId, chat_id: bot::ChatId,
                         delay_sec: f64) -> Result<Message, Error>
 {
-    let chat_id = reply_to.chat.id().clone();
-    let reply_to_id = reply_to.id.clone();
-
     tokio::time::delay_for(
         time::Duration::from_millis((delay_sec * 1000.0) as u64)).await;
     let post = api.send(SendMessage::new(chat_id, msg).reply_to(reply_to_id))
@@ -286,18 +284,43 @@ async fn onNewChatMembers(api: &bot::Api, config: &ConfigParams,
     Ok(())
 }
 
-async fn onWaReply(api: &bot::Api, msg: &Message) -> Result<(), Error>
+async fn onWaReply(api: &bot::Api, config: &ConfigParams, msg: &Message)
+                   -> Result<(), Error>
 {
-    let mut info = RuntimeInfo::load()?;
-    debug!("It's a wa. Wa count was {}", info.wa_count);
+    let chat_id = msg.chat.id();
+    // Sliently ignore if the reply is not sent in the correct chat.
+    if let Some(correct_chat) = config.general.group_id
+    {
+        if chat_id != bot::types::ChatId::new(correct_chat)
+        {
+            return Ok(());
+        }
+    }
+    else
+    {
+        return Ok(());
+    }
 
+    let mut info = RuntimeInfo::load()?;
+    let reddit_msg_id = if let Some(id) = info.last_msg_id
+    {
+        id
+    }
+    else
+    {
+        return Ok(());
+    };
+
+    debug!("It's a wa. Wa count was {}", info.wa_count);
     if info.wa_count == 2
     {
         let delay: f64 = thread_rng().gen_range(10.0, 600.0);
-        replyWithDelay(api, "哇！".to_string(), msg, delay).await?;
-        info.last_msg_id = None;
         info.wa_count = 0;
+        info.last_msg_id = None;
         info.save()?;
+        replyWithDelay(api, "哇！".to_string(),
+                       bot::types::MessageId::new(reddit_msg_id), chat_id,
+                       delay).await?;
     }
     else
     {
@@ -307,8 +330,8 @@ async fn onWaReply(api: &bot::Api, msg: &Message) -> Result<(), Error>
     Ok(())
 }
 
-async fn onTextReplyToMsg(api: &bot::Api, msg: &Message, reply_to: &Message)
-                          -> Result<(), Error>
+async fn onTextReplyToMsg(api: &bot::Api, config: &ConfigParams, msg: &Message,
+                          reply_to: &Message) -> Result<(), Error>
 {
     debug!("Reply to {} receivd.", reply_to.id);
     let info = RuntimeInfo::load()?;
@@ -323,7 +346,7 @@ async fn onTextReplyToMsg(api: &bot::Api, msg: &Message, reply_to: &Message)
         {
             if data.starts_with("哇")
             {
-                onWaReply(api, msg).await?;
+                onWaReply(api, config, msg).await?;
             }
         }
     }
@@ -331,7 +354,7 @@ async fn onTextReplyToMsg(api: &bot::Api, msg: &Message, reply_to: &Message)
 }
 
 
-async fn onTextReply(api: &bot::Api, msg: &Message,
+async fn onTextReply(api: &bot::Api, config: &ConfigParams, msg: &Message,
                      reply_to: &bot::types::MessageOrChannelPost)
                      -> Result<(), Error>
 {
@@ -339,7 +362,7 @@ async fn onTextReply(api: &bot::Api, msg: &Message,
     {
         telegram_bot::types::MessageOrChannelPost::Message(parent) =>
         {
-            onTextReplyToMsg(api, msg, &parent).await?;
+            onTextReplyToMsg(api, config, msg, &parent).await?;
         },
         telegram_bot::types::MessageOrChannelPost::ChannelPost(_) => (),
     }
@@ -569,7 +592,8 @@ pub async fn sendBestRedditToday(api: &bot::Api, config: &ConfigParams)
     Ok(msg)
 }
 
-async fn onMessage(api: &bot::Api, msg: Message) -> Result<(), Error>
+async fn onMessage(api: &bot::Api, config: &ConfigParams, msg: Message)
+                   -> Result<(), Error>
 {
     match msg.kind
     {
@@ -578,7 +602,7 @@ async fn onMessage(api: &bot::Api, msg: Message) -> Result<(), Error>
         {
             if let Some(reply_to_box) = &msg.reply_to_message
             {
-                onTextReply(api, &msg, reply_to_box.as_ref()).await?;
+                onTextReply(api, config, &msg, reply_to_box.as_ref()).await?;
             }
         },
         _ => ()
@@ -621,7 +645,7 @@ pub async fn startBot(config: &ConfigParams)
             {
                 bot::types::UpdateKind::Message(message) =>
                 {
-                    if let Err(e) = onMessage(&api, message).await
+                    if let Err(e) = onMessage(&api, &config, message).await
                     {
                         log_error!("{}", e);
                     }
