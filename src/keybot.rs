@@ -588,6 +588,7 @@ pub async fn sendBestRedditToday(api: &bot::Api, config: &ConfigParams)
 
     let mut info = RuntimeInfo::load()?;
     info.last_msg_id = Some(i64::from(msg.id));
+    info.wa_count = 0;
     info.save()?;
     Ok(msg)
 }
