@@ -11,13 +11,15 @@ mod error;
 mod utils;
 mod reddit;
 mod simple_http_server;
+mod bot_config;
+mod telegram;
 mod keybot;
 
-fn readConfig() -> Result<keybot::ConfigParams, error::Error>
+fn readConfig() -> Result<bot_config::ConfigParams, error::Error>
 {
     let conf_file = "keybot.toml";
     info!("Reading config from {}...", conf_file);
-    keybot::ConfigParams::fromFile(conf_file)
+    bot_config::ConfigParams::fromFile(conf_file)
 }
 
 #[tokio::main]
