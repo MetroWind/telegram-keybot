@@ -183,20 +183,11 @@ async fn onTextReplyToMsg(api: &bot::Api, config: &bot_config::ConfigParams,
                           msg: &Message, reply_to: &Message) -> Result<(), Error>
 {
     debug!("Reply to {} receivd.", reply_to.id);
-    let info = RuntimeInfo::load()?;
-    if let Some(daily_id) = info.last_msg_id
+    if let MessageKind::Text{ref data, ..} = msg.kind
     {
-        if daily_id != i64::from(reply_to.id)
+        if data.starts_with("哇")
         {
-            return Ok(());
-        }
-
-        if let MessageKind::Text{ref data, ..} = msg.kind
-        {
-            if data.starts_with("哇")
-            {
-                onWaReply(api, config, msg).await?;
-            }
+            onWaReply(api, config, msg).await?;
         }
     }
     Ok(())
