@@ -39,7 +39,7 @@ pub fn initialize() -> Result<(), Error>
                   waer_name       TEXT NOT NULL,
                   time            INTEGER
                   );",
-        rusqlite::params![],
+        rusqlite::NO_PARAMS,
     ).map_err(|_| error!(DBError, "Failed to create table 'was'"))?;
     Ok(())
 }
@@ -62,4 +62,38 @@ pub fn addWa(wa: WaEntry) -> Result<u32, Error>
                           wa.time.timestamp()])
         .map_err(|_| error!(DBError, "Failed to add a wa"))?;
     Ok(count + 1)
+}
+
+/// Who did the most wa-s in the last `time_period`? Return the name
+/// of the waer and the number of wa-s from this waer.
+pub fn bestWaer(time_period: chrono::Duration) -> Result<(String, u32), Error>
+{
+    let now = chrono::offset::Utc::now();
+    let conn = connect()?;
+    let row = conn.query_row(
+        "SELECT waer_name, COUNT(*) as count FROM was WHERE time > ?1
+         GROUP BY waer ORDER BY count DESC LIMIT 1;",
+        rusqlite::params![(now - time_period).timestamp()],
+        |row| Ok((row.get(0), row.get(1))))
+        .map_err(|_| error!(DBError, "Failed to get best waer"))?;
+
+    Ok((row.0.map_err(|_| error!(DBError, "Failed to get waer_name"))?,
+        row.1.map_err(|_| error!(DBError, "Failed to get wa count"))?))
+}
+
+/// Which msg is the most wa-ed during the last `time_period`? Return
+/// msg ID and number of wa-s.
+pub fn bestWaable(time_period: chrono::Duration) -> Result<(i64, u32), Error>
+{
+    let now = chrono::offset::Utc::now();
+    let conn = connect()?;
+    let row = conn.query_row(
+        "SELECT wa_to, COUNT(*) as count FROM was WHERE time > ?1
+         GROUP BY wa_to ORDER BY count DESC LIMIT 1;",
+        rusqlite::params![(now - time_period).timestamp()],
+        |row| Ok((row.get(0), row.get(1))))
+        .map_err(|_| error!(DBError, "Failed to get best waable"))?;
+
+    Ok((row.0.map_err(|_| error!(DBError, "Failed to get wa_to"))?,
+        row.1.map_err(|_| error!(DBError, "Failed to get wa count"))?))
 }

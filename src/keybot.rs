@@ -381,3 +381,33 @@ pub async fn startBot(config: &bot_config::ConfigParams)
         });
     }
 }
+
+pub async fn sendBestWaer(
+    api: &bot::Api, chat_id: i64, time_period: chrono::Duration, msg_tplt: &str)
+    -> Result<(), Error>
+{
+    let (waer, count) = chat_db::bestWaer(time_period)?;
+    info!("Best waer the last {}, with {} was.", time_period, count);
+
+    api.send(SendMessage::new(
+        bot::types::ChatId::new(chat_id),
+        &utils::SimpleTemplate::new(msg_tplt)
+            .apply("name", waer).apply("count", count).result())).await
+        .map_err(|_| error!(RuntimeError, "Failed to send best waer"))?;
+    Ok(())
+}
+
+pub async fn sendBestWaable(
+    api: &bot::Api, chat_id: i64, time_period: chrono::Duration, msg_tplt: &str)
+    -> Result<(), Error>
+{
+    let (waable, count) = chat_db::bestWaable(time_period)?;
+    info!("Best waable in the last {}, with {} was.", time_period, count);
+
+    api.send(SendMessage::new(
+        bot::types::ChatId::new(chat_id),
+        &utils::SimpleTemplate::new(msg_tplt).apply("count", count).result())
+             .reply_to(bot::types::MessageId::new(waable))).await
+        .map_err(|_| error!(RuntimeError, "Failed to send best waable"))?;
+    Ok(())
+}

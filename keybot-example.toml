@@ -4,6 +4,10 @@ welcome = "${user}，你已经是一个键盘侠啦！快来和大家打个招�
 token = "some:token"
 username = "username_of_bot"
 group_id = 0
+weekly_waer_template = "本周最哇键盘侠是 ${name}, 一共哇了 ${count} 次！"
+weekly_waable_template = "这个帖是本周最哇帖，一共收到了 ${count} 个哇！"
+monthly_waer_template = "本月最哇键盘侠是 ${name}, 一共哇了 ${count} 次！"
+monthly_waable_template = "这个帖是本月最哇帖！一共收到了 ${count} 个哇！"
 
 [reddit]
 client_id = "id"

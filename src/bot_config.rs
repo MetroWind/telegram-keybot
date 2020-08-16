@@ -18,6 +18,10 @@ pub struct ConfigParamsGeneral
     pub token: String,
     pub username: String,
     pub group_id: Option<i64>,
+    pub weekly_waer_template: String,
+    pub weekly_waable_template: String,
+    pub monthly_waer_template: String,
+    pub monthly_waable_template: String,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
