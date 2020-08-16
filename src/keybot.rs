@@ -165,7 +165,6 @@ async fn onWaReply(api: &bot::Api, config: &bot_config::ConfigParams, msg: &Mess
         wa_to: i64::from(waable_id),
         id: i64::from(msg.id),
         waer: i64::from(msg.from.id),
-        waer_name: telegram::getUsername(&msg.from),
         time: chrono::Utc.timestamp(msg.date, 0),
     })?;
 
@@ -389,10 +388,13 @@ pub async fn sendBestWaer(
     let (waer, count) = chat_db::bestWaer(time_period)?;
     info!("Best waer the last {}, with {} was.", time_period, count);
 
+    let username = telegram::getUserFullname(
+        &telegram::getChatMember(api, chat_id, waer).await?);
+
     api.send(SendMessage::new(
         bot::types::ChatId::new(chat_id),
         &utils::SimpleTemplate::new(msg_tplt)
-            .apply("name", waer).apply("count", count).result())).await
+            .apply("name", username).apply("count", count).result())).await
         .map_err(|_| error!(RuntimeError, "Failed to send best waer"))?;
     Ok(())
 }

@@ -7,7 +7,7 @@ use log::{info,debug};
 use tokio;
 use telegram_bot as bot;
 use telegram_bot::types::Message;
-use telegram_bot::types::requests::{SendMessage, SendPhoto};
+use telegram_bot::types::requests::{SendMessage, SendPhoto, GetChatMember};
 use reqwest;
 use reqwest::header::CONTENT_LENGTH;
 use tempfile;
@@ -56,6 +56,15 @@ pub fn getUsername(u: &bot::User) -> String
     {
         getUserFullname(u)
     }
+}
+
+pub async fn getChatMember(api: &bot::Api, chat_id: i64, user_id: i64)
+                     -> Result<bot::types::User, Error>
+{
+    let chat_member = api.send(GetChatMember::new(
+        bot::types::ChatId::new(chat_id), bot::types::UserId::new(user_id)))
+        .await.map_err(|_| error!(RuntimeError, "Failed to get chat member"))?;
+    Ok(chat_member.user)
 }
 
 /// If `msg` is a reply to a message that is not a channel post,

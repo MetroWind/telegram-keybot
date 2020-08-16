@@ -16,8 +16,6 @@ pub struct WaEntry
     pub id: i64,
     /// The user ID that sends the wa.
     pub waer: i64,
-    /// The display name of the waer. This could be a nick name or a full name.
-    pub waer_name: String,
     /// The time of the wa message.
     pub time: DateTime,
 }
@@ -36,7 +34,6 @@ pub fn initialize() -> Result<(), Error>
                   id              INTEGER PRIMARY KEY,
                   wa_to           INTEGER,
                   waer            INTEGER,
-                  waer_name       TEXT NOT NULL,
                   time            INTEGER
                   );",
         rusqlite::NO_PARAMS,
@@ -56,28 +53,27 @@ pub fn addWa(wa: WaEntry) -> Result<u32, Error>
         .map_err(|_| error!(DBError, "Failed to get count of was"))?;
 
     conn.execute(
-        "INSERT INTO was (id, wa_to, waer, waer_name, time)
-         VALUES (?1, ?2, ?3, ?4, ?5);",
-        rusqlite::params![wa.id, wa.wa_to, wa.waer, wa.waer_name,
-                          wa.time.timestamp()])
+        "INSERT INTO was (id, wa_to, waer, time)
+         VALUES (?1, ?2, ?3, ?4);",
+        rusqlite::params![wa.id, wa.wa_to, wa.waer, wa.time.timestamp()])
         .map_err(|_| error!(DBError, "Failed to add a wa"))?;
     Ok(count + 1)
 }
 
-/// Who did the most wa-s in the last `time_period`? Return the name
-/// of the waer and the number of wa-s from this waer.
-pub fn bestWaer(time_period: chrono::Duration) -> Result<(String, u32), Error>
+/// Who did the most wa-s in the last `time_period`? Return the ID of
+/// the waer and the number of wa-s from this waer.
+pub fn bestWaer(time_period: chrono::Duration) -> Result<(i64, u32), Error>
 {
     let now = chrono::offset::Utc::now();
     let conn = connect()?;
     let row = conn.query_row(
-        "SELECT waer_name, COUNT(*) as count FROM was WHERE time > ?1
+        "SELECT waer, COUNT(*) as count FROM was WHERE time > ?1
          GROUP BY waer ORDER BY count DESC LIMIT 1;",
         rusqlite::params![(now - time_period).timestamp()],
         |row| Ok((row.get(0), row.get(1))))
         .map_err(|_| error!(DBError, "Failed to get best waer"))?;
 
-    Ok((row.0.map_err(|_| error!(DBError, "Failed to get waer_name"))?,
+    Ok((row.0.map_err(|_| error!(DBError, "Failed to get waer"))?,
         row.1.map_err(|_| error!(DBError, "Failed to get wa count"))?))
 }
 
