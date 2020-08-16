@@ -14,6 +14,7 @@ mod simple_http_server;
 mod bot_config;
 mod telegram;
 mod keybot;
+mod chat_db;
 
 fn readConfig() -> Result<bot_config::ConfigParams, error::Error>
 {
@@ -47,6 +48,11 @@ async fn main() -> Result<(), error::Error>
         let api = bot::Api::new(&config.general.token);
         keybot::sendBestRedditToday(&api, &config).await?;
         return Ok(());
+    }
+
+    if !std::path::Path::new(chat_db::DB_FILENAME).exists()
+    {
+        chat_db::initialize()?;
     }
 
     keybot::startBot(&config).await;

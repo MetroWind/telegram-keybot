@@ -12,6 +12,7 @@ use serde::{Serialize, Deserialize};
 use telegram_bot as bot;
 use telegram_bot::types::{Message, MessageKind};
 use telegram_bot::types::requests::SendMessage;
+use chrono::prelude::*;
 use chrono;
 
 use crate::error::Error;
@@ -19,6 +20,7 @@ use crate::utils;
 use crate::reddit;
 use crate::bot_config;
 use crate::telegram;
+use crate::chat_db;
 
 #[derive(Serialize, Deserialize)]
 pub struct RuntimeInfo
@@ -155,31 +157,24 @@ async fn onWaReply(api: &bot::Api, config: &bot_config::ConfigParams, msg: &Mess
         return Ok(());
     }
 
-    let mut info = RuntimeInfo::load()?;
-    let reddit_msg_id = if let Some(id) = info.last_msg_id
-    {
-        id
-    }
-    else
-    {
-        return Ok(());
-    };
+    // Add to chat DB.
+    let waable_id = telegram::getParentMsgId(msg)
+        .ok_or_else(|| error!(RuntimeError, "Wa is not a reply"))?;
 
-    debug!("It's a wa. Wa count was {}", info.wa_count);
-    if info.wa_count == 2
+    let wa_count = chat_db::addWa(chat_db::WaEntry {
+        wa_to: i64::from(waable_id),
+        id: i64::from(msg.id),
+        waer: i64::from(msg.from.id),
+        waer_name: telegram::getUsername(&msg.from),
+        time: chrono::Utc.timestamp(msg.date, 0),
+    })?;
+
+    debug!("It's a wa. Wa count is {}", wa_count);
+    if wa_count == 3
     {
         let delay: f64 = thread_rng().gen_range(10.0, 600.0);
-        info.wa_count = 0;
-        info.last_msg_id = None;
-        info.save()?;
         telegram::replyWithDelay(
-            api, "哇！".to_string(), bot::types::MessageId::new(reddit_msg_id),
-            chat_id, delay).await?;
-    }
-    else
-    {
-        info.wa_count += 1;
-        info.save()?;
+            api, "哇！".to_string(), waable_id, chat_id, delay).await?;
     }
     Ok(())
 }

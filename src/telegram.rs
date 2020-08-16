@@ -58,6 +58,20 @@ pub fn getUsername(u: &bot::User) -> String
     }
 }
 
+/// If `msg` is a reply to a message that is not a channel post,
+/// return the message id to which `msg` replies.
+pub fn getParentMsgId(msg: &Message) -> Option<bot::MessageId>
+{
+    if let Some(reply_to) = &msg.reply_to_message
+    {
+        if let bot::types::MessageOrChannelPost::Message(m) = reply_to.as_ref()
+        {
+            return Some(m.id);
+        }
+    }
+    None
+}
+
 fn parseMagickSizeOutput(output: &str) -> Result<(u32, u32), Error>
 {
     let mut parts = output.split('x');
@@ -68,7 +82,6 @@ fn parseMagickSizeOutput(output: &str) -> Result<(u32, u32), Error>
         .map_err(|_| err.clone())?;
     Ok((width, height))
 }
-
 
 fn getImageSize(uri: &str) -> Result<(u32, u32), Error>
 {

@@ -1,3 +1,7 @@
 = Keybot
 
 A bot for a certain keyboard group on Telegram.
+
+== Dependencies
+
+* SQLite

@@ -18,6 +18,7 @@ pub enum Error
     RuntimeError(String),
     HttpServerError(String),
     RedditError(String),
+    DBError(String),
 }
 
 impl fmt::Display for Error
@@ -29,6 +30,7 @@ impl fmt::Display for Error
             Error::RuntimeError(msg) => write!(f, "Runtime error: {}", msg),
             Error::HttpServerError(msg) => write!(f, "HTTP server error: {}", msg),
             Error::RedditError(msg) => write!(f, "Reddit error: {}", msg),
+            Error::DBError(msg) => write!(f, "Database error: {}", msg),
         }
     }
 }
