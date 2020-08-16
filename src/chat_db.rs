@@ -37,7 +37,7 @@ pub fn initialize() -> Result<(), Error>
                   wa_to           INTEGER,
                   waer            INTEGER,
                   waer_name       TEXT NOT NULL,
-                  time            INTEGER,
+                  time            INTEGER
                   );",
         rusqlite::params![],
     ).map_err(|_| error!(DBError, "Failed to create table 'was'"))?;
