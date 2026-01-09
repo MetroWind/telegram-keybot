@@ -165,7 +165,7 @@ async fn onWaReply(api: &bot::Api, config: &bot_config::ConfigParams, msg: &Mess
         wa_to: i64::from(waable_id),
         id: i64::from(msg.id),
         waer: i64::from(msg.from.id),
-        time: chrono::Utc.timestamp(msg.date, 0),
+        time: chrono::Utc.timestamp_opt(msg.date, 0).single().unwrap(),
     })?;
 
     debug!("It's a wa. Wa count is {}", wa_count);

@@ -229,7 +229,7 @@ impl Post
             hide_score: false,
             id: String::new(),
             count_comments: 0,
-            time_create: Utc.timestamp(0, 0),
+            time_create: Utc.timestamp_opt(0, 0).unwrap(),
             sub: String::new(),
         }
     }
@@ -326,8 +326,8 @@ impl Subreddit
                     hide_score: data["hide_score"].as_bool().unwrap(),
                     id: data["name"].as_str().unwrap().to_owned(),
                     count_comments: data["num_comments"].as_u64().unwrap() as u32,
-                    time_create: Utc.timestamp(
-                        data["created_utc"].as_f64().unwrap() as i64, 0),
+                    time_create: Utc.timestamp_opt(
+                        data["created_utc"].as_f64().unwrap() as i64, 0).single().unwrap(),
                     sub: data["subreddit"].as_str().unwrap().to_owned(),
                 }
             }).collect())
