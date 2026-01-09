@@ -3,15 +3,14 @@ use std::fs;
 use std::io::prelude::*;
 
 use rand::prelude::*;
-use futures::StreamExt;
+use rand::thread_rng;
 use log::{info,debug};
 use log::error as log_error;
 use tokio;
 use serde_json;
 use serde::{Serialize, Deserialize};
-use telegram_bot as bot;
-use telegram_bot::types::{Message, MessageKind};
-use telegram_bot::types::requests::SendMessage;
+use teloxide::prelude::*;
+use teloxide::types::{Message, MessageId, ChatId};
 use chrono::prelude::*;
 use chrono;
 
@@ -76,8 +75,8 @@ impl RuntimeInfo
     }
 }
 
-async fn welcome(api: &bot::Api, config: &bot_config::ConfigParams,
-                 new_users: &Vec<bot::User>, chat: &bot::Channel)
+async fn welcome(bot: &Bot, config: &bot_config::ConfigParams,
+                 new_users: &[teloxide::types::User], chat: &teloxide::types::Chat)
                  -> Result<(), Error>
 {
     if config.general.welcome.is_empty()
@@ -89,13 +88,14 @@ async fn welcome(api: &bot::Api, config: &bot_config::ConfigParams,
     for user in new_users
     {
         let name = telegram::getUsername(user);
-        info!("{} joined chat {} ({}).", name, chat.id, chat.title);
+        info!("{} joined chat {} ({}).", name, chat.id, chat.title().unwrap_or(""));
         let msg_tplt = utils::SimpleTemplate::new(&config.general.welcome);
         let msg = msg_tplt
             .apply("user", format!("tg://user?id={}",
                                    telegram::getUserFullname(user)))
             .result();
-        if api.send(SendMessage::new(chat.id, msg)).await.is_err()
+        
+        if bot.send_message(chat.id, msg).send().await.is_err()
         {
             err = true;
         }
@@ -110,11 +110,11 @@ async fn welcome(api: &bot::Api, config: &bot_config::ConfigParams,
     }
 }
 
-async fn onNewChatMembers(api: &bot::Api, config: &bot_config::ConfigParams,
-                          new_users: &Vec<bot::User>, chat: &bot::Channel)
+async fn onNewChatMembers(bot: &Bot, config: &bot_config::ConfigParams,
+                          new_users: &[teloxide::types::User], chat: &teloxide::types::Chat)
                           -> Result<(), Error>
 {
-    debug!("New members in chat {} ({}).", chat.id, chat.title);
+    debug!("New members in chat {} ({}).", chat.id, chat.title().unwrap_or(""));
     // Is the bot one of the new members?
     if new_users.iter().any(|u|
         match &u.username
@@ -124,9 +124,9 @@ async fn onNewChatMembers(api: &bot::Api, config: &bot_config::ConfigParams,
         })
     {
         let mut info = RuntimeInfo::load()?;
-        if !info.chat_id.contains(&(i64::from(chat.id)))
+        if !info.chat_id.contains(&(chat.id.0)) // ChatId(i64)
         {
-            info.chat_id.push(i64::from(chat.id));
+            info.chat_id.push(chat.id.0);
             if let Err(e) = info.save()
             {
                 log_error!("{}", e);
@@ -135,19 +135,19 @@ async fn onNewChatMembers(api: &bot::Api, config: &bot_config::ConfigParams,
     }
     else if config.general.do_welcome
     {
-        welcome(api, config, new_users, chat).await?;
+        welcome(bot, config, new_users, chat).await?;
     }
     Ok(())
 }
 
-async fn onWaReply(api: &bot::Api, config: &bot_config::ConfigParams, msg: &Message)
+async fn onWaReply(bot: &Bot, config: &bot_config::ConfigParams, msg: &Message)
                    -> Result<(), Error>
 {
-    let chat_id = msg.chat.id();
+    let chat_id = msg.chat.id; // ChatId
     // Sliently ignore if the reply is not sent in the correct chat.
     if let Some(correct_chat) = config.general.group_id
     {
-        if chat_id != bot::types::ChatId::new(correct_chat)
+        if chat_id.0 != correct_chat
         {
             return Ok(());
         }
@@ -161,11 +161,17 @@ async fn onWaReply(api: &bot::Api, config: &bot_config::ConfigParams, msg: &Mess
     let waable_id = telegram::getParentMsgId(msg)
         .ok_or_else(|| error!(RuntimeError, "Wa is not a reply"))?;
 
+    let waer_id = if let Some(u) = msg.from() {
+        u.id.0 as i64 // UserId(u64) -> i64
+    } else {
+        return Ok(());
+    };
+
     let wa_count = chat_db::addWa(chat_db::WaEntry {
-        wa_to: i64::from(waable_id),
-        id: i64::from(msg.id),
-        waer: i64::from(msg.from.id),
-        time: chrono::Utc.timestamp_opt(msg.date, 0).single().unwrap(),
+        wa_to: waable_id.0 as i64, // MessageId(i32) -> i64
+        id: msg.id.0 as i64,
+        waer: waer_id,
+        time: chrono::Utc.timestamp_opt(msg.date.timestamp(), 0).single().unwrap(),
     })?;
 
     debug!("It's a wa. Wa count is {}", wa_count);
@@ -173,42 +179,35 @@ async fn onWaReply(api: &bot::Api, config: &bot_config::ConfigParams, msg: &Mess
     {
         let delay: f64 = thread_rng().gen_range(10.0..600.0);
         telegram::replyWithDelay(
-            api, "哇！".to_string(), waable_id, chat_id, delay).await?;
+            bot, "哇！".to_string(), waable_id, chat_id, delay).await?;
     }
     Ok(())
 }
 
-async fn onTextReplyToMsg(api: &bot::Api, config: &bot_config::ConfigParams,
+async fn onTextReplyToMsg(bot: &Bot, config: &bot_config::ConfigParams,
                           msg: &Message, reply_to: &Message) -> Result<(), Error>
 {
     debug!("Reply to {} receivd.", reply_to.id);
-    if let MessageKind::Text{ref data, ..} = msg.kind
+    if let Some(text) = msg.text()
     {
-        if data.starts_with("哇")
+        if text.starts_with("哇")
         {
-            onWaReply(api, config, msg).await?;
+            onWaReply(bot, config, msg).await?;
         }
     }
     Ok(())
 }
 
 
-async fn onTextReply(api: &bot::Api, config: &bot_config::ConfigParams,
-                     msg: &Message, reply_to: &bot::types::MessageOrChannelPost)
+async fn onTextReply(bot: &Bot, config: &bot_config::ConfigParams,
+                     msg: &Message, reply_to: &Message)
                      -> Result<(), Error>
 {
-    match reply_to
-    {
-        telegram_bot::types::MessageOrChannelPost::Message(parent) =>
-        {
-            onTextReplyToMsg(api, config, msg, &parent).await?;
-        },
-        telegram_bot::types::MessageOrChannelPost::ChannelPost(_) => (),
-    }
-    Ok(())
+    // In teloxide reply_to is always a Message (if present)
+    onTextReplyToMsg(bot, config, msg, reply_to).await
 }
 
-async fn trySendFirstPhotoFromPosts(api: &bot::Api, chat_id: i64,
+async fn trySendFirstPhotoFromPosts(bot: &Bot, chat_id: i64,
                               reddit_posts: &Vec<&reddit::Post>,
                               caption_tplt: &str) -> Result<Message, Error>
 {
@@ -219,7 +218,7 @@ async fn trySendFirstPhotoFromPosts(api: &bot::Api, chat_id: i64,
 
         if let Ok(msg) =
             telegram::sendPhoto(
-                api, &best_post.link, &utils::SimpleTemplate::new(caption_tplt)
+                bot, &best_post.link, &utils::SimpleTemplate::new(caption_tplt)
                     .apply("url", best_post.shortUrl()).result(),
                 chat_id).await
         {
@@ -277,7 +276,7 @@ async fn getRedditPostsToday(config: &bot_config::ConfigParams)
     Ok(posts)
 }
 
-pub async fn sendBestRedditToday(api: &bot::Api, config: &bot_config::ConfigParams)
+pub async fn sendBestRedditToday(bot: &Bot, config: &bot_config::ConfigParams)
                                  -> Result<Message, Error>
 {
     if config.general.group_id.is_none()
@@ -301,115 +300,123 @@ pub async fn sendBestRedditToday(api: &bot::Api, config: &bot_config::ConfigPara
     best_posts.reverse();
 
     let msg = trySendFirstPhotoFromPosts(
-        api, chat_id, &best_posts, &config.reddit.daily_pic_caption).await?;
+        bot, chat_id, &best_posts, &config.reddit.daily_pic_caption).await?;
 
     let mut info = RuntimeInfo::load()?;
-    info.last_msg_id = Some(i64::from(msg.id));
+    info.last_msg_id = Some(msg.id.0 as i64);
     info.wa_count = 0;
     info.save()?;
     Ok(msg)
 }
 
-async fn onMessage(api: &bot::Api, config: &bot_config::ConfigParams, msg: Message)
+async fn onMessage(bot: &Bot, config: &bot_config::ConfigParams, msg: Message)
                    -> Result<(), Error>
 {
-    match msg.kind
-    {
-        // MessageKind::Text { ref data, .. } =>
-        MessageKind::Text {..} =>
+    if let Some(text) = msg.text() {
+        if let Some(reply_to) = msg.reply_to_message()
         {
-            if let Some(reply_to_box) = &msg.reply_to_message
-            {
-                onTextReply(api, config, &msg, reply_to_box.as_ref()).await?;
-            }
-        },
-        _ => ()
+            onTextReply(bot, config, &msg, reply_to).await?;
+        }
     }
+    
+    // Check new chat members
+    if let Some(members) = msg.new_chat_members() {
+         onNewChatMembers(bot, config, members, &msg.chat).await?;
+    }
+    
     Ok(())
 }
 
-async fn onChannelPost(api: &bot::Api, config: &bot_config::ConfigParams,
-                       post: bot::types::ChannelPost) -> Result<(), Error>
+async fn onChannelPost(bot: &Bot, config: &bot_config::ConfigParams,
+                       post: Message) -> Result<(), Error>
 {
-    match post.kind
-    {
-        MessageKind::NewChatMembers{ref data} =>
-        {
-            onNewChatMembers(api, &config, data, &post.chat).await?;
-        },
-        _ => ()
+    // Channel posts are Messages in teloxide
+    if let Some(members) = post.new_chat_members() {
+        onNewChatMembers(bot, config, members, &post.chat).await?;
     }
     Ok(())
 }
 
 pub async fn startBot(config: &bot_config::ConfigParams)
 {
-    let api = bot::Api::new(&config.general.token);
-    let mut stream = api.stream();
+    let bot = Bot::new(&config.general.token);
+    let mut offset: Option<i32> = None;
+    
     info!("Entering update loop...");
-    while let Some(update) = stream.next().await
-    {
-        let update = match update
-        {
-            Err(e) => {log_error!("{}", e); continue;},
+    loop {
+        // Simple long polling loop
+        // We use reqwest directly implicitly via teloxide
+        
+        // We need to construct a params object for get_updates, or just use method builder
+        let mut req = bot.get_updates();
+        if let Some(o) = offset {
+            req = req.offset(o);
+        }
+        
+        let updates = match req.send().await {
             Ok(u) => u,
+            Err(e) => {
+                log_error!("Failed to fetch updates: {}", e);
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                continue;
+            }
         };
 
-        let api = api.clone();
-        // TODO: maybe use an arc instead of cloning?
-        let config = config.clone();
-        tokio::spawn(async move {
-            match update.kind
-            {
-                bot::types::UpdateKind::Message(message) =>
-                {
-                    if let Err(e) = onMessage(&api, &config, message).await
-                    {
-                        log_error!("{}", e);
-                    }
-                },
-                bot::types::UpdateKind::ChannelPost(post) =>
-                {
-                    if let Err(e) = onChannelPost(&api, &config, post).await
-                    {
-                        log_error!("{}", e);
-                    }
-                },
-                _ => (),
-            }
-        });
+        for update in updates {
+            offset = Some(update.id + 1);
+            let bot = bot.clone();
+            let config = config.clone();
+
+            tokio::spawn(async move {
+                match update.kind {
+                    teloxide::types::UpdateKind::Message(msg) => {
+                         if let Err(e) = onMessage(&bot, &config, msg).await {
+                             log_error!("{}", e);
+                         }
+                    },
+                    teloxide::types::UpdateKind::ChannelPost(post) => {
+                        if let Err(e) = onChannelPost(&bot, &config, post).await {
+                            log_error!("{}", e);
+                        }
+                    },
+                    _ => {},
+                }
+            });
+        }
     }
 }
 
 pub async fn sendBestWaer(
-    api: &bot::Api, chat_id: i64, time_period: chrono::Duration, msg_tplt: &str)
+    bot: &Bot, chat_id: i64, time_period: chrono::Duration, msg_tplt: &str)
     -> Result<(), Error>
 {
     let (waer, count) = chat_db::bestWaer(time_period)?;
     info!("Best waer the last {}, with {} was.", time_period, count);
 
+    // waer is i64, need to cast to u64 for UserId
     let username = telegram::getUserFullname(
-        &telegram::getChatMember(api, chat_id, waer).await?);
+        &telegram::getChatMember(bot, chat_id, waer).await?);
 
-    api.send(SendMessage::new(
-        bot::types::ChatId::new(chat_id),
+    bot.send_message(
+        ChatId(chat_id),
         &utils::SimpleTemplate::new(msg_tplt)
-            .apply("name", username).apply("count", count).result())).await
+            .apply("name", username).apply("count", count).result()).send().await
         .map_err(|_| error!(RuntimeError, "Failed to send best waer"))?;
     Ok(())
 }
 
 pub async fn sendBestWaable(
-    api: &bot::Api, chat_id: i64, time_period: chrono::Duration, msg_tplt: &str)
+    bot: &Bot, chat_id: i64, time_period: chrono::Duration, msg_tplt: &str)
     -> Result<(), Error>
 {
     let (waable, count) = chat_db::bestWaable(time_period)?;
     info!("Best waable in the last {}, with {} was.", time_period, count);
 
-    api.send(SendMessage::new(
-        bot::types::ChatId::new(chat_id),
+    // waable is i64, cast to i32 for MessageId
+    bot.send_message(
+        ChatId(chat_id),
         &utils::SimpleTemplate::new(msg_tplt).apply("count", count).result())
-             .reply_to(bot::types::MessageId::new(waable))).await
+             .reply_to_message_id(MessageId(waable as i32)).send().await
         .map_err(|_| error!(RuntimeError, "Failed to send best waable"))?;
     Ok(())
 }

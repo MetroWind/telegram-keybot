@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 
-use telegram_bot as bot;
+use teloxide::prelude::*;
 use tokio;
 use log::info;
 use clap;
@@ -73,38 +73,38 @@ async fn main() -> Result<(), error::Error>
     {
         Some("send-reddit-best") =>
         {
-            let api = bot::Api::new(&config.general.token);
-            keybot::sendBestRedditToday(&api, &config).await?;
+            let bot = Bot::new(&config.general.token);
+            keybot::sendBestRedditToday(&bot, &config).await?;
             return Ok(());
         },
         Some("send-weekly-waer") =>
         {
-            let api = bot::Api::new(&config.general.token);
+            let bot = Bot::new(&config.general.token);
             return keybot::sendBestWaer(
-                &api, config.general.group_id.unwrap(), chrono::Duration::days(7),
+                &bot, config.general.group_id.unwrap(), chrono::Duration::days(7),
                 &config.general.weekly_waer_template).await;
         },
         Some("send-weekly-waable") =>
         {
-            let api = bot::Api::new(&config.general.token);
+            let bot = Bot::new(&config.general.token);
             return keybot::sendBestWaable(
-                &api, config.general.group_id.unwrap(), chrono::Duration::days(7),
+                &bot, config.general.group_id.unwrap(), chrono::Duration::days(7),
                 &config.general.weekly_waable_template).await;
         },
         Some("send-monthly-waer") =>
         {
-            let api = bot::Api::new(&config.general.token);
+            let bot = Bot::new(&config.general.token);
             let now = chrono::Utc::now();
             return keybot::sendBestWaer(
-                &api, config.general.group_id.unwrap(), now - lastMonth(&now)?,
+                &bot, config.general.group_id.unwrap(), now - lastMonth(&now)?,
                 &config.general.monthly_waer_template).await;
         },
         Some("send-monthly-waable") =>
         {
-            let api = bot::Api::new(&config.general.token);
+            let bot = Bot::new(&config.general.token);
             let now = chrono::Utc::now();
             return keybot::sendBestWaable(
-                &api, config.general.group_id.unwrap(), now - lastMonth(&now)?,
+                &bot, config.general.group_id.unwrap(), now - lastMonth(&now)?,
                 &config.general.monthly_waable_template).await;
         },
         None =>

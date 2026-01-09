@@ -3,10 +3,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use log::{info,debug};
-use tokio;
-use telegram_bot as bot;
-use telegram_bot::types::Message;
-use telegram_bot::types::requests::{SendMessage, SendPhoto, GetChatMember};
+use teloxide::prelude::*;
+use teloxide::types::{Message, MessageId, ChatId, UserId, InputFile, User};
 use reqwest;
 use reqwest::header::CONTENT_LENGTH;
 use tempfile;
@@ -15,25 +13,20 @@ use crate::error::Error;
 use crate::utils;
 use crate::bot_config;
 
-pub async fn replyWithDelay(api: &bot::Api, msg: String,
-                        reply_to_id: bot::MessageId, chat_id: bot::ChatId,
+pub async fn replyWithDelay(bot: &Bot, msg: String,
+                        reply_to_id: MessageId, chat_id: ChatId,
                         delay_sec: f64) -> Result<Message, Error>
 {
-    tokio::time::delay_for(
+    tokio::time::sleep(
         std::time::Duration::from_millis((delay_sec * 1000.0) as u64)).await;
-    let post = api.send(SendMessage::new(chat_id, msg).reply_to(reply_to_id))
+    
+    let post = bot.send_message(chat_id, msg).reply_to_message_id(reply_to_id)
+        .send()
         .await.map_err(|_| error!(RuntimeError, "Failed to reply with delay"))?;
-    if let bot::types::MessageOrChannelPost::Message(msg) = post
-    {
-        Ok(msg)
-    }
-    else
-    {
-        Err(error!(RuntimeError, "Shit happened."))
-    }
+    Ok(post)
 }
 
-pub fn getUserFullname(u: &bot::User) -> String
+pub fn getUserFullname(u: &User) -> String
 {
     if let Some(last) = &u.last_name
     {
@@ -45,7 +38,7 @@ pub fn getUserFullname(u: &bot::User) -> String
     }
 }
 
-pub fn getUsername(u: &bot::User) -> String
+pub fn getUsername(u: &User) -> String
 {
     if let Some(nick) = &u.username
     {
@@ -57,25 +50,23 @@ pub fn getUsername(u: &bot::User) -> String
     }
 }
 
-pub async fn getChatMember(api: &bot::Api, chat_id: i64, user_id: i64)
-                     -> Result<bot::types::User, Error>
+pub async fn getChatMember(bot: &Bot, chat_id: i64, user_id: i64)
+                     -> Result<User, Error>
 {
-    let chat_member = api.send(GetChatMember::new(
-        bot::types::ChatId::new(chat_id), bot::types::UserId::new(user_id)))
+    // teloxide 0.12: ChatId(i64), UserId(u64)
+    let chat_member = bot.get_chat_member(ChatId(chat_id), UserId(user_id as u64))
+        .send()
         .await.map_err(|_| error!(RuntimeError, "Failed to get chat member"))?;
     Ok(chat_member.user)
 }
 
 /// If `msg` is a reply to a message that is not a channel post,
 /// return the message id to which `msg` replies.
-pub fn getParentMsgId(msg: &Message) -> Option<bot::MessageId>
+pub fn getParentMsgId(msg: &Message) -> Option<MessageId>
 {
-    if let Some(reply_to) = &msg.reply_to_message
+    if let Some(reply_to) = msg.reply_to_message()
     {
-        if let bot::types::MessageOrChannelPost::Message(m) = reply_to.as_ref()
-        {
-            return Some(m.id);
-        }
+        return Some(reply_to.id);
     }
     None
 }
@@ -173,7 +164,7 @@ async fn getUriFileSize(uri: &str) -> Result<UriFileInfo, Error>
     }
 }
 
-pub async fn sendPhoto(api: &bot::Api, uri: &str, caption: &str, chat_id: i64)
+pub async fn sendPhoto(bot: &Bot, uri: &str, caption: &str, chat_id: i64)
                        -> Result<Message, Error>
 {
     debug!("Sending photo at {}...", uri);
@@ -185,9 +176,10 @@ pub async fn sendPhoto(api: &bot::Api, uri: &str, caption: &str, chat_id: i64)
         size.1 < bot_config::TG_IMG_SIZE_LIMIT &&
         file_info.size < bot_config::TG_IMG_FILE_SIZE_LIMIT
     {
-        api.send(SendPhoto::new(bot::types::ChatId::new(chat_id),
-                                bot::types::InputFileRef::new(uri))
-                 .caption(caption)).await.map_err(
+        // Try sending url directly
+        let url = reqwest::Url::parse(uri).map_err(|_| error!(RuntimeError, "Invalid URI"))?;
+        bot.send_photo(ChatId(chat_id), InputFile::url(url))
+            .caption(caption).send().await.map_err(
             |_| error!(RuntimeError, "Failed to send photo"))
     }
     else
@@ -230,10 +222,12 @@ pub async fn sendPhoto(api: &bot::Api, uri: &str, caption: &str, chat_id: i64)
         fs::remove_file(img_orig_ref).map_err(
             |_| error!(RuntimeError,
                        format!("Failed to remove temp file: {}", img_orig_ref)))?;
-        api.send(SendPhoto::new(
-            bot::types::ChatId::new(chat_id),
-            bot::types::InputFileUpload::with_path(img_resized))
-                 .caption(caption)).await.map_err(
+        
+        let path = std::path::Path::new(&img_resized);
+        bot.send_photo(
+            ChatId(chat_id),
+            InputFile::file(path))
+                 .caption(caption).send().await.map_err(
             |_| error!(RuntimeError, "Failed to send photo"))
     }
 }

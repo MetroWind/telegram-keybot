@@ -36,7 +36,9 @@ impl RedditQuerier
         client_id: &str, client_secret: &str) -> Result<Self, Error>
     {
         let url = "https://www.reddit.com/api/v1/access_token";
-        let payload = [("grant_type", "client_credentials"),];
+        let mut payload = HashMap::new();
+        payload.insert("grant_type", "client_credentials");
+        
         let client = reqwest::Client::new();
         let res = match client.post(url).header("User-Agent", Self::USER_AGENT)
             .form(&payload).basic_auth(client_id, Some(client_secret))
@@ -87,8 +89,8 @@ impl RedditQuerier
             ("state", &state_str),
             ("redirect_uri", "http://localhost:31416/"),
             ("duration", "temporary"),
-            ("scope", "identity edit flair history mysubreddits \
-privatemessages read report save submit subscribe vote \
+            ("scope", "identity edit flair history mysubreddits 
+privatemessages read report save submit subscribe vote 
 wikiedit wikiread")];
 
         let perm_url = reqwest::Url::parse_with_params(
@@ -112,10 +114,10 @@ wikiedit wikiread")];
 
         let code = &params["code"];
 
-        let payload_token = [
-            ("grant_type", "authorization_code"),
-            ("code", &code),
-            ("redirect_uri", "http://localhost:31416/")];
+        let mut payload_token = HashMap::new();
+        payload_token.insert("grant_type", "authorization_code");
+        payload_token.insert("code", code.as_str());
+        payload_token.insert("redirect_uri", "http://localhost:31416/");
 
         let client = requests::Client::new();
         let res = client.post("https://www.reddit.com/api/v1/access_token")
@@ -184,8 +186,10 @@ wikiedit wikiread")];
     /// Revoke the access token and consume self.
     pub async fn logout(self) -> Result<(), Error>
     {
-        let payload = [("token", self.token.as_ref()),
-                       ("token_type_hint", "access_token")];
+        let mut payload = HashMap::new();
+        payload.insert("token", self.token.as_ref());
+        payload.insert("token_type_hint", "access_token");
+        
         let client = reqwest::Client::new();
         let res = client.post("https://www.reddit.com/api/v1/revoke_token")
             .header("User-Agent", Self::USER_AGENT)
