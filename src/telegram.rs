@@ -1,6 +1,5 @@
 use std::str;
 use std::fs;
-use std::time;
 use std::path::PathBuf;
 
 use log::{info,debug};
@@ -21,7 +20,7 @@ pub async fn replyWithDelay(api: &bot::Api, msg: String,
                         delay_sec: f64) -> Result<Message, Error>
 {
     tokio::time::delay_for(
-        time::Duration::from_millis((delay_sec * 1000.0) as u64)).await;
+        std::time::Duration::from_millis((delay_sec * 1000.0) as u64)).await;
     let post = api.send(SendMessage::new(chat_id, msg).reply_to(reply_to_id))
         .await.map_err(|_| error!(RuntimeError, "Failed to reply with delay"))?;
     if let bot::types::MessageOrChannelPost::Message(msg) = post

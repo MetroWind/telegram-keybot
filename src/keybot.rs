@@ -171,7 +171,7 @@ async fn onWaReply(api: &bot::Api, config: &bot_config::ConfigParams, msg: &Mess
     debug!("It's a wa. Wa count is {}", wa_count);
     if wa_count == 3
     {
-        let delay: f64 = thread_rng().gen_range(10.0, 600.0);
+        let delay: f64 = thread_rng().gen_range(10.0..600.0);
         telegram::replyWithDelay(
             api, "哇！".to_string(), waable_id, chat_id, delay).await?;
     }

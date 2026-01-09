@@ -78,8 +78,7 @@ impl RedditQuerier
         let state_str: String = uuid::Uuid::new_v1(
             uuid::v1::Timestamp::from_unix(
                 uuid::v1::Context::new(42), now.as_secs(), now.subsec_nanos()),
-            &[1, 2, 3, 4, 5, 6]).map_err(
-            |_| { error!(RedditError, "failed to generate UUID") })?
+            &[1, 2, 3, 4, 5, 6])
             .to_string();
 
         let payload_init = [

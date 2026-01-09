@@ -47,19 +47,19 @@ fn lastMonth(from_time: &chrono::DateTime<chrono::Utc>)
 async fn main() -> Result<(), error::Error>
 {
     env_logger::init();
-    let opts = clap::App::new("Keybot")
+    let opts = clap::Command::new("Keybot")
         .version("0.1.0")
         .author("@MetroWind")
         .about("A bot for a certain Telegram group")
-        .subcommand(clap::App::new("send-reddit-best")
+        .subcommand(clap::Command::new("send-reddit-best")
                     .about("Send r/mk's best pic today."))
-        .subcommand(clap::App::new("send-weekly-waer")
+        .subcommand(clap::Command::new("send-weekly-waer")
                     .about("Send weekly waer."))
-        .subcommand(clap::App::new("send-weekly-waable")
+        .subcommand(clap::Command::new("send-weekly-waable")
                     .about("Send weekly waable."))
-        .subcommand(clap::App::new("send-monthly-waer")
+        .subcommand(clap::Command::new("send-monthly-waer")
                     .about("Send monthly waer."))
-        .subcommand(clap::App::new("send-monthly-waable")
+        .subcommand(clap::Command::new("send-monthly-waable")
                     .about("Send monthly waable."))
         .get_matches();
 
