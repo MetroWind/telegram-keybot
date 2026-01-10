@@ -5,8 +5,8 @@ use serde::{Serialize, Deserialize};
 
 use crate::error::Error;
 
-pub static TG_IMG_SIZE_LIMIT: u32 = 4096;
-pub static TG_IMG_FILE_SIZE_LIMIT: u64 = 5 * 1024 * 1024;
+pub static TG_IMG_SIZE_LIMIT: u32 = 1280;
+pub static TG_IMG_FILE_SIZE_LIMIT: u64 = 3 * 1024 * 1024;
 pub static IMG_RESIZE_TARGET: u32 = 1024;
 pub static IMG_RESIZE_QUALITY: u32 = 92;
 
