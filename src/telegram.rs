@@ -165,7 +165,7 @@ async fn getUriFileSize(uri: &str) -> Result<UriFileInfo, Error>
 }
 
 pub async fn sendPhoto(bot: &Bot, uri: &str, caption: &str, chat_id: i64)
-                       -> Result<Message, Error>
+                       -> Result<(Message, Option<PathBuf>), Error>
 {
     debug!("Sending photo at {}...", uri);
     let size = getImageSize(uri)?;
@@ -178,9 +178,10 @@ pub async fn sendPhoto(bot: &Bot, uri: &str, caption: &str, chat_id: i64)
     {
         // Try sending url directly
         let url = reqwest::Url::parse(uri).map_err(|_| error!(RuntimeError, "Invalid URI"))?;
-        bot.send_photo(ChatId(chat_id), InputFile::url(url))
+        let msg = bot.send_photo(ChatId(chat_id), InputFile::url(url))
             .caption(caption).send().await.map_err(
-            |_| error!(RuntimeError, "Failed to send photo"))
+            |_| error!(RuntimeError, "Failed to send photo"))?;
+        Ok((msg, None))
     }
     else
     {
@@ -224,10 +225,17 @@ pub async fn sendPhoto(bot: &Bot, uri: &str, caption: &str, chat_id: i64)
                        format!("Failed to remove temp file: {}", img_orig_ref)))?;
         
         let path = std::path::Path::new(&img_resized);
-        bot.send_photo(
+        let msg = bot.send_photo(
             ChatId(chat_id),
             InputFile::file(path))
-                 .caption(caption).send().await.map_err(
-            |_| error!(RuntimeError, "Failed to send photo"))
+                 .caption(caption).send().await;
+
+        if msg.is_err() {
+            // Attempt to clean up resized image on failure
+            let _ = fs::remove_file(path);
+            return Err(error!(RuntimeError, "Failed to send photo"));
+        }
+
+        Ok((msg.unwrap(), Some(path.to_path_buf())))
     }
 }

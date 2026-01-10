@@ -25,3 +25,4 @@ tempfile = ">=3"
 clap = ">=4"
 rusqlite = { version = ">=0.32", features = ["bundled"] }
 openssl = { version = "0.10", features = ["vendored"] }
+base64 = "0.22"

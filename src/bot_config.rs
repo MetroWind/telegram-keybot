@@ -33,10 +33,20 @@ pub struct ConfigParamsReddit
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+pub struct ConfigParamsLlm
+{
+    pub api_base: String,
+    pub api_key: String,
+    pub model: Option<String>,
+    pub system_prompt: String,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 pub struct ConfigParams
 {
     pub general: ConfigParamsGeneral,
     pub reddit: ConfigParamsReddit,
+    pub llm: Option<ConfigParamsLlm>,
 }
 
 impl ConfigParams

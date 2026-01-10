@@ -13,3 +13,10 @@ monthly_waable_template = "这个帖是本月最哇帖！一共收到了 ${count
 client_id = "id"
 client_secret = "secret"
 daily_pic_caption = "今天份的键盘 ${url}"
+
+# Optional LLM configuration for commenting on Reddit photos
+# [llm]
+# api_base = "https://api.openai.com/v1"
+# api_key = "your_api_key"
+# model = "gpt-4-turbo"
+# system_prompt = "You are an expert on mechanical keyboards. Comment on this photo."

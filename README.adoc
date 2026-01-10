@@ -1,7 +1,51 @@
 = Keybot
 
-A bot for a certain keyboard group on Telegram.
+Keybot is a Telegram bot designed for mechanical keyboard communities. It automates content sharing from Reddit, tracks community engagement through a "Wa" reaction system, and provides AI-generated commentary on shared photos.
 
-== Dependencies
+== Features
 
-* SQLite
+=== Content Automation
+* Reddit Integration: Automatically fetches the highest-rated image post from r/MechanicalKeyboards and shares it with the group.
+* Image Processing: Automatically resizes large images to comply with Telegram's file size and dimension limits.
+* AI Commentary: Optionally integrates with OpenAI-compatible APIs to generate automated comments for shared photos using customizable system prompts.
+
+=== Engagement Tracking (Wa Counter)
+Keybot monitors community excitement by tracking replies that start with "哇" (Wa).
+* Automated Interaction: Joins the conversation when a post receives a threshold of reactions.
+* Statistical Tracking: Records engagement metrics for users and posts.
+* Leaderboards: Supports identifying top contributors and most popular content over various time periods.
+
+=== Management and Reporting
+* Periodic Reports: Subcommands to announce weekly and monthly engagement leaders.
+* Welcome System: Customizable welcome messages for new group members.
+* Persistence: Uses a SQLite backend for reliable tracking of all community interactions.
+
+== Setup and Configuration
+
+1. Prerequisites: Ensure SQLite and OpenSSL are installed on the system.
+2. Configuration:
+   * Copy `keybot-example.toml` to `keybot.toml`.
+   * Provide the Telegram Bot Token and Reddit API credentials.
+   * Configure the optional `[llm]` section for AI features.
+3. Database: The bot initializes its SQLite database (`chat.db`) automatically upon first run.
+
+== Usage
+
+Run the bot in listener mode:
+[source,sh]
+----
+cargo run
+----
+
+Execute specific tasks (suitable for cron jobs):
+[source,sh]
+----
+cargo run -- send-reddit-best   # Post the top Reddit image of the day
+cargo run -- send-weekly-waer   # Report the top user for the week
+cargo run -- send-weekly-waable # Report the most popular post of the week
+----
+
+== LLM Integration
+The bot supports any OpenAI-compatible API.
+* Flexibility: The `model` parameter is optional. If omitted, the bot will query the API for available models and select the first one.
+* Efficiency: The bot intelligently decides whether to send a direct image URL or a base64-encoded resized image to the LLM to optimize for API limits and performance.

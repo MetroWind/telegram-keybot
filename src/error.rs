@@ -19,6 +19,7 @@ pub enum Error
     HttpServerError(String),
     RedditError(String),
     DBError(String),
+    LlmError(String),
 }
 
 impl fmt::Display for Error
@@ -31,6 +32,7 @@ impl fmt::Display for Error
             Error::HttpServerError(msg) => write!(f, "HTTP server error: {}", msg),
             Error::RedditError(msg) => write!(f, "Reddit error: {}", msg),
             Error::DBError(msg) => write!(f, "Database error: {}", msg),
+            Error::LlmError(msg) => write!(f, "LLM error: {}", msg),
         }
     }
 }

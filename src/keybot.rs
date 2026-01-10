@@ -2,6 +2,7 @@ use std::str;
 use std::fs;
 use std::io::prelude::*;
 
+use base64::prelude::*;
 use rand::prelude::*;
 use rand::thread_rng;
 use log::{info,debug};
@@ -209,19 +210,56 @@ async fn onTextReply(bot: &Bot, config: &bot_config::ConfigParams,
 
 async fn trySendFirstPhotoFromPosts(bot: &Bot, chat_id: i64,
                               reddit_posts: &Vec<&reddit::Post>,
-                              caption_tplt: &str) -> Result<Message, Error>
+                              config: &bot_config::ConfigParams) -> Result<Message, Error>
 {
     for best_post in reddit_posts
     {
         info!("Best reddit post today is {}, with image at {}.",
               best_post.shortUrl(), &best_post.link);
 
-        if let Ok(msg) =
+        if let Ok((msg, local_path)) =
             telegram::sendPhoto(
-                bot, &best_post.link, &utils::SimpleTemplate::new(caption_tplt)
+                bot, &best_post.link, &utils::SimpleTemplate::new(&config.reddit.daily_pic_caption)
                     .apply("url", best_post.shortUrl()).result(),
                 chat_id).await
         {
+            if let Some(llm_config) = &config.llm {
+                // Use the local resized image if available, otherwise use the URL.
+                let image_input = if let Some(path) = &local_path {
+                    match tokio::fs::read(path).await {
+                        Ok(bytes) => {
+                            let b64 = BASE64_STANDARD.encode(&bytes);
+                            format!("data:image/jpeg;base64,{}", b64)
+                        },
+                        Err(e) => {
+                            log_error!("Failed to read local image for LLM: {}", e);
+                            best_post.link.clone()
+                        }
+                    }
+                } else {
+                    best_post.link.clone()
+                };
+
+                // Generate and send the LLM comment as a reply to the photo.
+                match crate::llm::generate_comment(llm_config, &image_input).await {
+                    Ok(comment) => {
+                         info!("LLM comment generated: {}", comment);
+                         if let Err(e) = bot.send_message(ChatId(chat_id), comment)
+                                .reply_to_message_id(msg.id).send().await {
+                             log_error!("Failed to send LLM comment: {}", e);
+                         }
+                    },
+                    Err(e) => log_error!("Failed to generate LLM comment: {}", e),
+                }
+            }
+
+            // Cleanup local file if it exists
+            if let Some(path) = local_path {
+                if let Err(e) = tokio::fs::remove_file(&path).await {
+                    log_error!("Failed to remove temp file {:?}: {}", path, e);
+                }
+            }
+
             return Ok(msg);
         }
         else
@@ -300,7 +338,7 @@ pub async fn sendBestRedditToday(bot: &Bot, config: &bot_config::ConfigParams)
     best_posts.reverse();
 
     let msg = trySendFirstPhotoFromPosts(
-        bot, chat_id, &best_posts, &config.reddit.daily_pic_caption).await?;
+        bot, chat_id, &best_posts, config).await?;
 
     let mut info = RuntimeInfo::load()?;
     info.last_msg_id = Some(msg.id.0 as i64);

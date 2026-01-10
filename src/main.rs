@@ -12,6 +12,7 @@ mod error;
 #[macro_use]
 mod utils;
 mod reddit;
+mod llm;
 mod simple_http_server;
 mod bot_config;
 mod telegram;
