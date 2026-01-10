@@ -19,7 +19,7 @@ pub async fn replyWithDelay(bot: &Bot, msg: String,
 {
     tokio::time::sleep(
         std::time::Duration::from_millis((delay_sec * 1000.0) as u64)).await;
-    
+
     let post = bot.send_message(chat_id, msg).reply_to_message_id(reply_to_id)
         .send()
         .await.map_err(|_| error!(RuntimeError, "Failed to reply with delay"))?;
@@ -208,7 +208,7 @@ pub async fn sendPhoto(bot: &Bot, uri: &str, caption: &str, chat_id: i64)
             .to_string();
         let img_orig_ref = &img_orig;
         if let Err(e) = utils::run(
-            &["magick", "convert", img_orig_ref,
+            &["magick", img_orig_ref,
               "-limit", "memory", "100MiB",
               // "-limit", "map", "200MiB",
               "-resize", &format!("{s}x{s}", s=bot_config::IMG_RESIZE_TARGET),
@@ -223,7 +223,7 @@ pub async fn sendPhoto(bot: &Bot, uri: &str, caption: &str, chat_id: i64)
         fs::remove_file(img_orig_ref).map_err(
             |_| error!(RuntimeError,
                        format!("Failed to remove temp file: {}", img_orig_ref)))?;
-        
+
         let path = std::path::Path::new(&img_resized);
         let msg = bot.send_photo(
             ChatId(chat_id),
