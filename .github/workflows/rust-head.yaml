@@ -4,7 +4,7 @@ name: Build head
 
 jobs:
   build:
-    name: Build Static Binary
+    name: Build Binaries
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -20,14 +20,29 @@ jobs:
           target: x86_64-unknown-linux-musl
           override: true
 
-      - uses: actions-rs/cargo@v1
+      - name: Build Debug Binary
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --target x86_64-unknown-linux-musl
+
+      - name: Build Release Binary
+        uses: actions-rs/cargo@v1
         with:
           command: build
           args: --release --target x86_64-unknown-linux-musl
 
-      - run: strip target/x86_64-unknown-linux-musl/release/keybot
+      - name: Strip Release Binary
+        run: strip target/x86_64-unknown-linux-musl/release/keybot
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload Debug Artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: keybot-static
+          name: keybot-static-debug
+          path: target/x86_64-unknown-linux-musl/debug/keybot
+
+      - name: Upload Release Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: keybot-static-release
           path: target/x86_64-unknown-linux-musl/release/keybot
